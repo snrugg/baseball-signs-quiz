@@ -35,6 +35,11 @@ export function useIK(model, skeleton, boneMap, onFrame) {
   // When all zero, no override is applied (hand stays at natural IK result).
   const handTargetEuler = { rx: 0, ry: 0, rz: 0 }
 
+  // Per-anchor elbow bias — additive offsets to the adaptive pole vector
+  // in model-local space.  out > 0 = elbow more to the right;  up > 0 = elbow higher.
+  // Both zero = rely entirely on the adaptive formula.
+  const _poleOffset = { out: 0, up: 0 }
+
   // Detected palm axis in hand bone's LOCAL space.
   // Used by computeAutoHandRotation to determine which way the palm faces.
   const _palmLocalAxis = new THREE.Vector3(0, 1, 0)
@@ -158,6 +163,17 @@ export function useIK(model, skeleton, boneMap, onFrame) {
   }
 
   /**
+   * Set per-anchor elbow bias in model-local space.
+   * out > 0 = elbow further to the right (character's right = +X)
+   * up  > 0 = elbow higher (world +Y bias)
+   * Both zero = rely entirely on the adaptive formula.
+   */
+  function setPoleOffset(out, up) {
+    _poleOffset.out = out
+    _poleOffset.up  = up
+  }
+
+  /**
    * Compute a "smart default" world-space Euler rotation for the hand
    * that makes the palm approximately face inward toward the model's center.
    *
@@ -264,7 +280,17 @@ export function useIK(model, skeleton, boneMap, onFrame) {
     const angleA = Math.acos(Math.max(-1, Math.min(1, cosA)))
 
     // ── Step 3: Pole direction in world space (model-relative) ───────────────
-    _poleModelDir.set(0.35, -1, 0).normalize()
+    // Adaptive pole: elbow starts "down and slightly out" for low targets and
+    // transitions to "out and UP" for high targets, with a forward nudge when
+    // reaching backward (e.g. back of head). This prevents the elbow from
+    // pinching inward on overhead and rear gestures.
+    const lift     = Math.max(0, _stDir.y)    // 0 when level or below, 1 straight up
+    const pullback = Math.max(0, -_stDir.z)   // 0 when forward/sideways, 1 straight back
+    _poleModelDir.set(
+      THREE.MathUtils.lerp(0.35, 2.0, lift)      + _poleOffset.out,  // strongly outward as arm rises
+      THREE.MathUtils.lerp(-1.0, 0.6, lift)      + _poleOffset.up,   // positive Y (elbow UP) for high targets
+      THREE.MathUtils.lerp(0.0,  0.5, pullback),                     // push elbow forward when reaching back
+    ).normalize()
     _poleWorldDir.copy(_poleModelDir).transformDirection(model.value.matrixWorld)
 
     // Project pole onto plane perpendicular to stDir
@@ -361,6 +387,7 @@ export function useIK(model, skeleton, boneMap, onFrame) {
     getTarget,
     initIK,
     setHandRotation,
+    setPoleOffset,
     computeAutoHandRotation,
   }
 }

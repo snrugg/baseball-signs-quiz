@@ -83,6 +83,42 @@ function resetRotation(name) {
   ik.setHandRotation(0, 0, 0)
 }
 
+/**
+ * Live-update the left arm pose while dragging a left-arm slider.
+ * axis: 0 = forward, 1 = raise
+ */
+function onLeftArmChange(name, axis, event) {
+  const val = parseFloat(event.target.value)
+  if (isNaN(val)) return
+  anchors.setAnchorLeftArm(name, axis, val)
+  const [fwd, raise] = anchors.getAnchorLeftArm(name)
+  scene.setLeftArmPose(fwd, raise)
+}
+
+function resetLeftArm(name) {
+  anchors.setAnchorLeftArm(name, 0, 0)
+  anchors.setAnchorLeftArm(name, 1, 0)
+  scene.setLeftArmPose(0, 0)
+}
+
+/**
+ * Live-update the right arm (elbow) bias while dragging a slider.
+ * axis: 0 = out, 1 = up
+ */
+function onRightArmChange(name, axis, event) {
+  const val = parseFloat(event.target.value)
+  if (isNaN(val)) return
+  anchors.setAnchorRightArm(name, axis, val)
+  const [out, up] = anchors.getAnchorRightArm(name)
+  ik.setPoleOffset(out, up)
+}
+
+function resetRightArm(name) {
+  anchors.setAnchorRightArm(name, 0, 0)
+  anchors.setAnchorRightArm(name, 1, 0)
+  ik.setPoleOffset(0, 0)
+}
+
 let _saveStatusTimer = null
 function save() {
   anchors.saveOffsets()
@@ -96,6 +132,7 @@ function reset() {
     anchors.resetOffsets()
     selectedAnchor.value = null
     ik.setHandRotation(0, 0, 0)
+    ik.setPoleOffset(0, 0)
   }
 }
 
@@ -226,6 +263,78 @@ function testAllAnchors() {
         />
         <span class="offset-value">
           {{ (anchors.anchorDefs.value[selectedAnchor]?.rotation?.[idx] ?? 0).toFixed(0) }}&deg;
+        </span>
+      </div>
+
+      <!-- Left arm sliders -->
+      <div class="section-label rotation-label">
+        Left Arm
+        <span class="rot-actions">
+          <button class="btn-inline btn-inline-reset" @click="resetLeftArm(selectedAnchor)" title="Return left arm to idle pose">✕</button>
+        </span>
+      </div>
+      <div class="offset-row">
+        <label class="rot-label" title="Swing arm from side to front">Fwd</label>
+        <input
+          type="range"
+          min="-45"
+          max="90"
+          step="1"
+          :value="anchors.anchorDefs.value[selectedAnchor]?.leftArm?.[0] ?? 0"
+          @input="onLeftArmChange(selectedAnchor, 0, $event)"
+        />
+        <span class="offset-value">
+          {{ (anchors.anchorDefs.value[selectedAnchor]?.leftArm?.[0] ?? 0).toFixed(0) }}&deg;
+        </span>
+      </div>
+      <div class="offset-row">
+        <label class="rot-label" title="Raise arm upward from hanging">Up</label>
+        <input
+          type="range"
+          min="-30"
+          max="90"
+          step="1"
+          :value="anchors.anchorDefs.value[selectedAnchor]?.leftArm?.[1] ?? 0"
+          @input="onLeftArmChange(selectedAnchor, 1, $event)"
+        />
+        <span class="offset-value">
+          {{ (anchors.anchorDefs.value[selectedAnchor]?.leftArm?.[1] ?? 0).toFixed(0) }}&deg;
+        </span>
+      </div>
+
+      <!-- Right arm / Elbow sliders -->
+      <div class="section-label rotation-label">
+        Elbow
+        <span class="rot-actions">
+          <button class="btn-inline btn-inline-reset" @click="resetRightArm(selectedAnchor)" title="Reset elbow to adaptive default">✕</button>
+        </span>
+      </div>
+      <div class="offset-row">
+        <label class="rot-label" title="Push elbow further out from body">Out</label>
+        <input
+          type="range"
+          min="-3"
+          max="5"
+          step="0.05"
+          :value="anchors.anchorDefs.value[selectedAnchor]?.rightArm?.[0] ?? 0"
+          @input="onRightArmChange(selectedAnchor, 0, $event)"
+        />
+        <span class="offset-value">
+          {{ (anchors.anchorDefs.value[selectedAnchor]?.rightArm?.[0] ?? 0).toFixed(2) }}
+        </span>
+      </div>
+      <div class="offset-row">
+        <label class="rot-label" title="Push elbow higher or lower">Up</label>
+        <input
+          type="range"
+          min="-3"
+          max="5"
+          step="0.05"
+          :value="anchors.anchorDefs.value[selectedAnchor]?.rightArm?.[1] ?? 0"
+          @input="onRightArmChange(selectedAnchor, 1, $event)"
+        />
+        <span class="offset-value">
+          {{ (anchors.anchorDefs.value[selectedAnchor]?.rightArm?.[1] ?? 0).toFixed(2) }}
         </span>
       </div>
     </div>

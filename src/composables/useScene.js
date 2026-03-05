@@ -1,4 +1,4 @@
-import { ref, shallowRef, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, shallowRef, onMounted, onBeforeUnmount } from 'vue'
 import * as THREE from 'three'
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js'
 
@@ -267,12 +267,70 @@ export function useScene(canvasRef) {
     const delta = clock.getDelta()
 
     if (mixer) mixer.update(delta)
+    applyLeftArmSwing()   // after animation, before IK/anchor callbacks
 
     for (const cb of onFrameCallbacks) {
       cb(delta)
     }
 
     renderer.render(scene, camera)
+  }
+
+  // --- Left arm pose (per-gesture) ---
+  // Two axes applied after mixer.update() so IK/anchor callbacks see the result.
+  //   forward: rotate around model -X  → swings hand from side toward front
+  //   raise:   rotate around model -Z  → lifts hand from hanging toward overhead
+  // Values are set by the sequencer (tweened per anchor) or by the calibration
+  // UI for live preview.
+  const leftArmPose = reactive({ forward: 0, raise: 0 })
+  let _leftArmBone = null
+  const _leftArmSwingQuat    = new THREE.Quaternion()
+  const _leftArmParentInvMat = new THREE.Matrix4()
+  const _leftArmAxis         = new THREE.Vector3()
+
+  function applyLeftArmSwing() {
+    const { forward, raise } = leftArmPose
+    if (!model.value || (forward === 0 && raise === 0)) return
+
+    // Lazy-find the LeftArm bone (upper arm only, not ForeArm or Hand)
+    if (!_leftArmBone) {
+      const bones = boneMap.value
+      _leftArmBone = Object.values(bones).find(b =>
+        b.name.includes('LeftArm') &&
+        !b.name.includes('ForeArm') &&
+        !b.name.includes('Hand'),
+      ) ?? null
+      if (!_leftArmBone) return
+    }
+
+    // Convert both axes from model/world space to LeftArm's parent-bone local space.
+    // We read parent.matrixWorld once (before either rotation is applied) so both
+    // axes are expressed in the same original coordinate frame.
+    _leftArmBone.parent.updateWorldMatrix(true, false)
+    _leftArmParentInvMat.copy(_leftArmBone.parent.matrixWorld).invert()
+
+    if (forward !== 0) {
+      // Around model's -X (character's left axis): + = arm swings toward front
+      _leftArmAxis.set(-1, 0, 0).transformDirection(model.value.matrixWorld)
+      _leftArmAxis.transformDirection(_leftArmParentInvMat).normalize()
+      _leftArmSwingQuat.setFromAxisAngle(_leftArmAxis, THREE.MathUtils.degToRad(forward))
+      _leftArmBone.quaternion.premultiply(_leftArmSwingQuat)
+    }
+
+    if (raise !== 0) {
+      // Around model's -Z (character's backward axis): + = arm rises upward
+      _leftArmAxis.set(0, 0, -1).transformDirection(model.value.matrixWorld)
+      _leftArmAxis.transformDirection(_leftArmParentInvMat).normalize()
+      _leftArmSwingQuat.setFromAxisAngle(_leftArmAxis, THREE.MathUtils.degToRad(raise))
+      _leftArmBone.quaternion.premultiply(_leftArmSwingQuat)
+    }
+
+    _leftArmBone.updateMatrixWorld(true)
+  }
+
+  function setLeftArmPose(forward, raise) {
+    leftArmPose.forward = forward
+    leftArmPose.raise   = raise
   }
 
   // --- Model transform controls (rotation + horizontal position) ---
@@ -418,5 +476,7 @@ export function useScene(canvasRef) {
     modelOffsetX,
     setModelRotation,
     setModelOffsetX,
+    leftArmPose,
+    setLeftArmPose,
   }
 }

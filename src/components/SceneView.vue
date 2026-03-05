@@ -22,6 +22,8 @@ const {
   modelOffsetX,
   setModelRotation,
   setModelOffsetX,
+  leftArmPose,
+  setLeftArmPose,
 } = useScene(canvasRef)
 
 // Initialize anchor system
@@ -31,6 +33,10 @@ const {
   anchorNames,
   getAnchorWorldPos,
   getAnchorRotation,
+  getAnchorLeftArm,
+  setAnchorLeftArm,
+  getAnchorRightArm,
+  setAnchorRightArm,
   createSpheres,
   setSpheresVisible,
   setAnchorOffset,
@@ -45,6 +51,7 @@ const {
   setTarget,
   getTarget,
   setHandRotation,
+  setPoleOffset,
   computeAutoHandRotation,
 } = useIK(model, skeleton, boneMap, onFrame)
 
@@ -58,7 +65,7 @@ const {
   moveToRest,
   stop,
   initPosition,
-} = useSequencer(getAnchorWorldPos, getAnchorRotation, setTarget, setHandRotation, onFrame)
+} = useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeftArm, getAnchorRightArm, setTarget, setHandRotation, setLeftArmPose, setPoleOffset, onFrame)
 
 // Provide everything to child components
 provide('scene', {
@@ -73,6 +80,8 @@ provide('scene', {
   modelOffsetX,
   setModelRotation,
   setModelOffsetX,
+  leftArmPose,
+  setLeftArmPose,
 })
 
 provide('anchors', {
@@ -81,6 +90,10 @@ provide('anchors', {
   anchorNames,
   getAnchorWorldPos,
   getAnchorRotation,
+  getAnchorLeftArm,
+  setAnchorLeftArm,
+  getAnchorRightArm,
+  setAnchorRightArm,
   createSpheres,
   setSpheresVisible,
   setAnchorOffset,
@@ -95,6 +108,7 @@ provide('ik', {
   setTarget,
   getTarget,
   setHandRotation,
+  setPoleOffset,
   computeAutoHandRotation,
 })
 

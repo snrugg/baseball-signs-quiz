@@ -11,7 +11,7 @@ import * as THREE from 'three'
  *   → moves the right hand to cap, then chest, then belt in sequence,
  *     applying the calibrated hand rotation at each stop.
  */
-export function useSequencer(getAnchorWorldPos, getAnchorRotation, setTarget, setHandRotation, onFrame) {
+export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeftArm, getAnchorRightArm, setTarget, setHandRotation, setLeftArmPose, setPoleOffset, onFrame) {
   const isPlaying = ref(false)
   const currentStep = ref(-1)
   const currentSequence = ref([])
@@ -21,6 +21,12 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, setTarget, se
 
   // The hand rotation we'll animate (GSAP mutates this, we push it to IK each frame)
   const animatedRot = { rx: 0, ry: 0, rz: 0 }
+
+  // The left-arm pose we'll animate in parallel with position + hand rotation
+  const animatedLeftArm = { forward: 0, raise: 0 }
+
+  // The right-arm elbow bias we'll animate in parallel
+  const animatedRightArm = { out: 0, up: 0 }
 
   // "Sticky anchor" — when set, the IK target continuously follows this
   // anchor's world position every frame, so rotating/moving the model
@@ -124,13 +130,33 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, setTarget, se
           onComplete: finish,
         })
 
-        // Tween rotation back to neutral (no override) in parallel
+        // Tween hand rotation back to neutral in parallel
         gsap.to(animatedRot, {
           duration: moveTime,
           rx: 0, ry: 0, rz: 0,
           ease,
           onUpdate: () => {
             setHandRotation(animatedRot.rx, animatedRot.ry, animatedRot.rz)
+          },
+        })
+
+        // Tween left arm back to natural idle pose in parallel
+        gsap.to(animatedLeftArm, {
+          duration: moveTime,
+          forward: 0, raise: 0,
+          ease,
+          onUpdate: () => {
+            setLeftArmPose(animatedLeftArm.forward, animatedLeftArm.raise)
+          },
+        })
+
+        // Tween right arm elbow bias back to neutral in parallel
+        gsap.to(animatedRightArm, {
+          duration: moveTime,
+          out: 0, up: 0,
+          ease,
+          onUpdate: () => {
+            setPoleOffset(animatedRightArm.out, animatedRightArm.up)
           },
         })
       }
@@ -155,6 +181,8 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, setTarget, se
         const tz = pos?.z ?? animatedPos.z
 
         const [targetRx, targetRy, targetRz] = getAnchorRotation(name)
+        const [targetFwd, targetRaise]       = getAnchorLeftArm(name)
+        const [targetOut, targetUp]          = getAnchorRightArm(name)
 
         // Tween position
         _currentTween = gsap.to(animatedPos, {
@@ -177,13 +205,33 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, setTarget, se
           },
         })
 
-        // Tween rotation in parallel
+        // Tween hand rotation in parallel
         gsap.to(animatedRot, {
           duration: moveTime,
           rx: targetRx, ry: targetRy, rz: targetRz,
           ease,
           onUpdate: () => {
             setHandRotation(animatedRot.rx, animatedRot.ry, animatedRot.rz)
+          },
+        })
+
+        // Tween left arm pose in parallel
+        gsap.to(animatedLeftArm, {
+          duration: moveTime,
+          forward: targetFwd, raise: targetRaise,
+          ease,
+          onUpdate: () => {
+            setLeftArmPose(animatedLeftArm.forward, animatedLeftArm.raise)
+          },
+        })
+
+        // Tween right arm elbow bias in parallel
+        gsap.to(animatedRightArm, {
+          duration: moveTime,
+          out: targetOut, up: targetUp,
+          ease,
+          onUpdate: () => {
+            setPoleOffset(animatedRightArm.out, animatedRightArm.up)
           },
         })
       }
@@ -204,6 +252,8 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, setTarget, se
     if (!pos) return
 
     const [targetRx, targetRy, targetRz] = getAnchorRotation(anchorName)
+    const [targetFwd, targetRaise]       = getAnchorLeftArm(anchorName)
+    const [targetOut, targetUp]          = getAnchorRightArm(anchorName)
 
     isPlaying.value = true
     isAnimating = true
@@ -223,13 +273,33 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, setTarget, se
       },
     })
 
-    // Tween rotation in parallel
+    // Tween hand rotation in parallel
     gsap.to(animatedRot, {
       duration,
       rx: targetRx, ry: targetRy, rz: targetRz,
       ease: 'power2.inOut',
       onUpdate: () => {
         setHandRotation(animatedRot.rx, animatedRot.ry, animatedRot.rz)
+      },
+    })
+
+    // Tween left arm pose in parallel
+    gsap.to(animatedLeftArm, {
+      duration,
+      forward: targetFwd, raise: targetRaise,
+      ease: 'power2.inOut',
+      onUpdate: () => {
+        setLeftArmPose(animatedLeftArm.forward, animatedLeftArm.raise)
+      },
+    })
+
+    // Tween right arm elbow bias in parallel
+    gsap.to(animatedRightArm, {
+      duration,
+      out: targetOut, up: targetUp,
+      ease: 'power2.inOut',
+      onUpdate: () => {
+        setPoleOffset(animatedRightArm.out, animatedRightArm.up)
       },
     })
   }
@@ -259,6 +329,24 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, setTarget, se
       ease: 'power2.inOut',
       onUpdate: () => {
         setHandRotation(animatedRot.rx, animatedRot.ry, animatedRot.rz)
+      },
+    })
+
+    gsap.to(animatedLeftArm, {
+      duration,
+      forward: 0, raise: 0,
+      ease: 'power2.inOut',
+      onUpdate: () => {
+        setLeftArmPose(animatedLeftArm.forward, animatedLeftArm.raise)
+      },
+    })
+
+    gsap.to(animatedRightArm, {
+      duration,
+      out: 0, up: 0,
+      ease: 'power2.inOut',
+      onUpdate: () => {
+        setPoleOffset(animatedRightArm.out, animatedRightArm.up)
       },
     })
   }

@@ -15,22 +15,25 @@ import { detectBonePrefix } from './boneUtils.js'
  * These are starting values — the calibration UI lets you adjust them.
  */
 const DEFAULT_ANCHOR_DEFS = {
-  billOfCap:   { bone: 'Head',         offset: [0, 0.15, 0.13],   rotation: [0, 0, 0] },
-  topOfHead:   { bone: 'HeadTop_End',  offset: [0, 0.02, 0],      rotation: [0, 0, 0] },
-  backOfHead:  { bone: 'Head',         offset: [0, 0.10, -0.10],  rotation: [0, 0, 0] },
-  nose:        { bone: 'Head',         offset: [0, 0.06, 0.12],   rotation: [0, 0, 0] },
-  chin:        { bone: 'Head',         offset: [0, -0.02, 0.10],  rotation: [0, 0, 0] },
-  // Ears: lateral offset on head bone local X axis (+X = character's right)
-  leftEar:     { bone: 'Head',         offset: [-0.09, 0.03, 0.02], rotation: [0, 0, 0] },
-  rightEar:    { bone: 'Head',         offset: [0.09, 0.03, 0.02],  rotation: [0, 0, 0] },
-  chest:       { bone: 'Spine2',       offset: [0, 0.05, 0.12],  rotation: [0, 0, 0] },
-  belt:        { bone: 'Spine1',       offset: [0, -0.10, 0.12], rotation: [0, 0, 0] },
-  leftArm:     { bone: 'LeftArm',      offset: [0, -0.07, 0],    rotation: [0, 0, 0] },
-  rightArm:    { bone: 'RightShoulder', offset: [0, 0, 0.08],    rotation: [0, 0, 0] },
-  frontOfLeg:  { bone: 'RightUpLeg',   offset: [0, -0.10, 0.12], rotation: [0, 0, 0] },
-  backOfLeg:   { bone: 'RightUpLeg',   offset: [0, -0.10, -0.12], rotation: [0, 0, 0] },
-  frontOfHand: { bone: 'LeftHand',     offset: [0, 0, 0.06],     rotation: [0, 0, 0] },
-  backOfHand:  { bone: 'LeftHand',     offset: [0, 0, -0.06],    rotation: [0, 0, 0] },
+  //                                                                              leftArm:  [forward°, raise°]
+  //                                                                              rightArm: [out°, up°]  — elbow bias
+  //                                                                              forward: swing arm toward front of body
+  //                                                                              raise:   lift arm up from hanging
+  billOfCap:   { bone: 'Head',         offset: [0, 0.15, 0.13],    rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
+  topOfHead:   { bone: 'HeadTop_End',  offset: [0, 0.02, 0],       rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
+  backOfHead:  { bone: 'Head',         offset: [0, 0.10, -0.10],   rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
+  nose:        { bone: 'Head',         offset: [0, 0.06, 0.12],    rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
+  chin:        { bone: 'Head',         offset: [0, -0.02, 0.10],   rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
+  leftEar:     { bone: 'Head',         offset: [-0.09, 0.03, 0.02], rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
+  rightEar:    { bone: 'Head',         offset: [0.09, 0.03, 0.02],  rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
+  chest:       { bone: 'Spine2',       offset: [0, 0.05, 0.12],    rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
+  belt:        { bone: 'Spine1',       offset: [0, -0.10, 0.12],   rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
+  leftArm:     { bone: 'LeftArm',      offset: [0, -0.07, 0],      rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
+  rightArm:    { bone: 'RightShoulder', offset: [0, 0, 0.08],      rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
+  frontOfLeg:  { bone: 'RightUpLeg',   offset: [0, -0.10, 0.12],   rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
+  backOfLeg:   { bone: 'RightUpLeg',   offset: [0, -0.10, -0.12],  rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
+  frontOfHand: { bone: 'LeftHand',     offset: [0, 0, 0.06],       rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
+  backOfHand:  { bone: 'LeftHand',     offset: [0, 0, -0.06],      rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
 }
 
 // Human-readable labels for the UI
@@ -84,8 +87,10 @@ function mergeWithDefaults(saved) {
   const merged = structuredClone(DEFAULT_ANCHOR_DEFS)
   for (const [name, def] of Object.entries(saved)) {
     if (merged[name]) {
-      if (Array.isArray(def.offset))   merged[name].offset   = def.offset
-      if (Array.isArray(def.rotation)) merged[name].rotation = def.rotation
+      if (Array.isArray(def.offset))   merged[name].offset    = def.offset
+      if (Array.isArray(def.rotation)) merged[name].rotation  = def.rotation
+      if (Array.isArray(def.leftArm))  merged[name].leftArm   = def.leftArm
+      if (Array.isArray(def.rightArm)) merged[name].rightArm  = def.rightArm
     }
   }
   return merged
@@ -175,6 +180,34 @@ export function useAnchors(boneMap, onFrame) {
     return def?.rotation ?? [0, 0, 0]
   }
 
+  /** Returns [forward, raise] degrees for the left-arm pose at this anchor. */
+  function getAnchorLeftArm(name) {
+    const def = anchorDefs.value[name]
+    return def?.leftArm ?? [0, 0]
+  }
+
+  /** axis: 0 = forward, 1 = raise */
+  function setAnchorLeftArm(name, axis, value) {
+    const def = anchorDefs.value[name]
+    if (!def) return
+    if (!def.leftArm) def.leftArm = [0, 0]
+    def.leftArm[axis] = value
+  }
+
+  /** Returns [out, up] elbow bias for the right arm at this anchor. */
+  function getAnchorRightArm(name) {
+    const def = anchorDefs.value[name]
+    return def?.rightArm ?? [0, 0]
+  }
+
+  /** axis: 0 = out, 1 = up */
+  function setAnchorRightArm(name, axis, value) {
+    const def = anchorDefs.value[name]
+    if (!def) return
+    if (!def.rightArm) def.rightArm = [0, 0]
+    def.rightArm[axis] = value
+  }
+
   function createSpheres(scene) {
     if (sphereGroup) return
     sphereGroup = new THREE.Group()
@@ -251,7 +284,9 @@ export function useAnchors(boneMap, onFrame) {
       out[name] = {
         bone:     def.bone,
         offset:   [...def.offset],
-        rotation: [...(def.rotation ?? [0, 0, 0])],
+        rotation: [...(def.rotation  ?? [0, 0, 0])],
+        leftArm:  [...(def.leftArm   ?? [0, 0])],
+        rightArm: [...(def.rightArm  ?? [0, 0])],
       }
     }
     return out
@@ -293,6 +328,10 @@ export function useAnchors(boneMap, onFrame) {
     anchorNames,
     getAnchorWorldPos,
     getAnchorRotation,
+    getAnchorLeftArm,
+    setAnchorLeftArm,
+    getAnchorRightArm,
+    setAnchorRightArm,
     createSpheres,
     setSpheresVisible,
     setAnchorOffset,

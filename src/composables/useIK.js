@@ -9,6 +9,12 @@ import { detectBonePrefix } from './boneUtils.js'
  * Chain: RightArm (upper arm) → RightForeArm (forearm) → RightHand (effector)
  * Pole target: defined in MODEL-LOCAL space so it follows model rotation.
  * Elbow prefers to point down and slightly outward (character's right = +X).
+ *
+ * Hand orientation:
+ *   setHandRotation(rx, ry, rz) — override the hand bone's world-space Euler.
+ *   [0, 0, 0] = no override (hand stays at natural FBX/IK pose).
+ *   computeAutoHandRotation(anchorWorldPos) — heuristic: rotate palm to face
+ *   inward toward the model's center, as a calibration starting point.
  */
 export function useIK(model, skeleton, boneMap, onFrame) {
   const ikReady = ref(false)
@@ -23,7 +29,15 @@ export function useIK(model, skeleton, boneMap, onFrame) {
   let upperArmLen = 0
   let forearmLen = 0
 
-  // Reusable temp objects to avoid GC pressure at 60fps
+  // Hand rotation target — [rx, ry, rz] in degrees, world-space Euler XYZ.
+  // When all zero, no override is applied (hand stays at natural IK result).
+  const handTargetEuler = { rx: 0, ry: 0, rz: 0 }
+
+  // Detected palm axis in hand bone's LOCAL space.
+  // Used by computeAutoHandRotation to determine which way the palm faces.
+  const _palmLocalAxis = new THREE.Vector3(0, 1, 0)
+
+  // Reusable temp objects — position solve
   const _shoulderWorld = new THREE.Vector3()
   const _elbowWorld    = new THREE.Vector3()
   const _toTarget      = new THREE.Vector3()
@@ -35,6 +49,11 @@ export function useIK(model, skeleton, boneMap, onFrame) {
   const _desiredLocal  = new THREE.Vector3()
   const _restDir       = new THREE.Vector3()
   const _parentInvMat  = new THREE.Matrix4()
+
+  // Reusable temp objects — hand rotation
+  const _handTargetQuat   = new THREE.Quaternion()
+  const _forearmWorldQuat = new THREE.Quaternion()
+  const _tempEuler        = new THREE.Euler()
 
   function initIK() {
     const bones = boneMap.value
@@ -67,17 +86,129 @@ export function useIK(model, skeleton, boneMap, onFrame) {
     forearmLen  = elbowPos.distanceTo(wristPos)
 
     console.log(`IK arm lengths: upper=${upperArmLen.toFixed(3)}, forearm=${forearmLen.toFixed(3)}`)
-
-    // Log bone rest directions for debugging
     console.log('Upper arm rest dir (forearm.position):', forearmBone.position.toArray().map(v => v.toFixed(3)))
     console.log('Forearm rest dir (hand.position):', handBone.position.toArray().map(v => v.toFixed(3)))
 
     // Initialize the IK target to the current hand position
     ikTarget.copy(wristPos)
 
+    // Detect which local axis of the hand bone is the palm normal.
+    // We do this in bind pose so the arm is in a predictable T-pose orientation.
+    detectPalmAxis()
+
     ikReady.value = true
     console.log('Two-bone IK solver initialized successfully')
     return true
+  }
+
+  /**
+   * Detect the hand bone's "palm" axis in its local space.
+   *
+   * In a Mixamo T-pose the forearm points roughly along world +X (character's right).
+   * The palm-facing axis of the hand is perpendicular to the fingers (forearm direction).
+   * We find the local hand axis LEAST aligned with the forearm direction — that's
+   * the best candidate for the palm normal.
+   */
+  function detectPalmAxis() {
+    if (!handBone || !forearmBone) return
+
+    model.value.updateMatrixWorld(true)
+
+    // Forearm world direction in bind pose
+    const forearmWorldDir = new THREE.Vector3()
+    forearmBone.getWorldDirection(forearmWorldDir)
+
+    // Three world-space axes of the hand bone
+    const mat = handBone.matrixWorld
+    const axisX = new THREE.Vector3().setFromMatrixColumn(mat, 0)
+    const axisY = new THREE.Vector3().setFromMatrixColumn(mat, 1)
+    const axisZ = new THREE.Vector3().setFromMatrixColumn(mat, 2)
+
+    const dotX = Math.abs(axisX.dot(forearmWorldDir))
+    const dotY = Math.abs(axisY.dot(forearmWorldDir))
+    const dotZ = Math.abs(axisZ.dot(forearmWorldDir))
+
+    console.log(`Hand axis alignment with forearm: X=${dotX.toFixed(3)} Y=${dotY.toFixed(3)} Z=${dotZ.toFixed(3)}`)
+
+    // Palm axis = LOCAL axis LEAST aligned with forearm (most perpendicular = palm)
+    if (dotX <= dotY && dotX <= dotZ) {
+      _palmLocalAxis.set(1, 0, 0)
+      console.log('Palm axis detected: local +X')
+    } else if (dotY <= dotX && dotY <= dotZ) {
+      _palmLocalAxis.set(0, 1, 0)
+      console.log('Palm axis detected: local +Y')
+    } else {
+      _palmLocalAxis.set(0, 0, 1)
+      console.log('Palm axis detected: local +Z')
+    }
+  }
+
+  /**
+   * Set the target world-space Euler rotation for the right hand bone.
+   * rx, ry, rz are in DEGREES.
+   * All zeros = no override (hand stays at natural IK result).
+   */
+  function setHandRotation(rx, ry, rz) {
+    handTargetEuler.rx = rx
+    handTargetEuler.ry = ry
+    handTargetEuler.rz = rz
+  }
+
+  /**
+   * Compute a "smart default" world-space Euler rotation for the hand
+   * that makes the palm approximately face inward toward the model's center.
+   *
+   * This is a calibration starting point — the sliders let you fine-tune.
+   * Returns [rx, ry, rz] in degrees.
+   *
+   * @param {THREE.Vector3} anchorWorldPos  World position of the anchor
+   */
+  function computeAutoHandRotation(anchorWorldPos) {
+    if (!handBone || !forearmBone || !model.value) return [0, 0, 0]
+
+    // Make sure matrices are current
+    model.value.updateMatrixWorld(true)
+
+    // Direction from anchor toward model centre (horizontal plane only,
+    // so anchors on the head still get a sensible inward direction).
+    const modelPos = model.value.position
+    const inward = new THREE.Vector3(
+      modelPos.x - anchorWorldPos.x,
+      0,
+      modelPos.z - anchorWorldPos.z,
+    )
+
+    if (inward.lengthSq() < 0.001) {
+      // Anchor is directly above/below the model origin (e.g. topOfHead).
+      // Fall back to world -Y (palm down).
+      inward.set(0, -1, 0)
+    } else {
+      inward.normalize()
+    }
+
+    // Current hand bone world quaternion (after whatever IK pose is set right now)
+    const handWorldQuat = new THREE.Quaternion()
+    handBone.getWorldQuaternion(handWorldQuat)
+
+    // Current palm direction in world space, derived from detected local palm axis
+    const currentPalm = _palmLocalAxis.clone().applyQuaternion(handWorldQuat)
+
+    // Rotation that swings the palm from its current direction to face inward
+    const correctionQuat = new THREE.Quaternion().setFromUnitVectors(
+      currentPalm,
+      inward,
+    )
+
+    // Apply correction to produce the target world quaternion
+    const targetWorldQuat = correctionQuat.multiply(handWorldQuat)
+
+    // Convert to Euler XYZ degrees
+    const euler = new THREE.Euler().setFromQuaternion(targetWorldQuat, 'XYZ')
+    return [
+      THREE.MathUtils.radToDeg(euler.x),
+      THREE.MathUtils.radToDeg(euler.y),
+      THREE.MathUtils.radToDeg(euler.z),
+    ]
   }
 
   function setTarget(worldPos) {
@@ -99,6 +230,7 @@ export function useIK(model, skeleton, boneMap, onFrame) {
    * 5. Elbow world position = shoulder + stDir*cos(A)*L1 + polePerp*sin(A)*L1
    * 6. Upper arm: setFromUnitVectors(boneRestDir, shoulder→elbow in parent local)
    * 7. Forearm: setFromUnitVectors(boneRestDir, elbow→target in parent local)
+   * 8. Hand: if handTargetEuler is non-zero, override to desired world Euler
    */
   function solveTwoBoneIK() {
     if (!upperArmBone || !forearmBone || !model.value) return
@@ -124,11 +256,6 @@ export function useIK(model, skeleton, boneMap, onFrame) {
     const angleA = Math.acos(Math.max(-1, Math.min(1, cosA)))
 
     // ── Step 3: Pole direction in world space (model-relative) ───────────────
-    // Defined in model's local space:
-    //   +X = character's right (outward from body for right arm)
-    //   -Y = downward
-    // Result: elbow prefers to hang down and slightly outward — natural for a
-    // coach touching their body. This rotates with the model automatically.
     _poleModelDir.set(0.35, -1, 0).normalize()
     _poleWorldDir.copy(_poleModelDir).transformDirection(model.value.matrixWorld)
 
@@ -137,7 +264,6 @@ export function useIK(model, skeleton, boneMap, onFrame) {
       .sub(_tmp.copy(_stDir).multiplyScalar(_poleWorldDir.dot(_stDir)))
 
     if (_polePerp.lengthSq() < 0.0001) {
-      // Degenerate: pole is collinear with arm direction — pick any perpendicular
       _tmp.set(Math.abs(_stDir.y) > 0.9 ? 1 : 0, Math.abs(_stDir.y) > 0.9 ? 0 : -1, 0)
       _polePerp.copy(_tmp).sub(_stDir.clone().multiplyScalar(_tmp.dot(_stDir)))
     }
@@ -149,38 +275,48 @@ export function useIK(model, skeleton, boneMap, onFrame) {
       .addScaledVector(_polePerp, upperArmLen * Math.sin(angleA))
 
     // ── Step 5: Upper arm rotation ───────────────────────────────────────────
-    // Desired world direction: shoulder → elbow
     _tmp.copy(_elbowWorld).sub(_shoulderWorld).normalize()
 
-    // Transform to upper arm's parent local space
     const uaParent = upperArmBone.parent
     uaParent.updateWorldMatrix(true, false)
     _parentInvMat.copy(uaParent.matrixWorld).invert()
     _desiredLocal.copy(_tmp).transformDirection(_parentInvMat)
 
-    // Bone rest direction in upper arm's OWN local space = direction toward child (forearm)
     _restDir.copy(forearmBone.position).normalize()
-
     upperArmBone.quaternion.setFromUnitVectors(_restDir, _desiredLocal)
     upperArmBone.updateMatrixWorld(true)
 
     // ── Step 6: Forearm rotation ─────────────────────────────────────────────
-    // Get actual elbow pos after upper arm rotation
     forearmBone.getWorldPosition(_elbowWorld)
 
-    // Desired world direction: elbow → target
     _tmp.copy(ikTarget).sub(_elbowWorld).normalize()
 
-    // Transform to forearm's parent (= upper arm) local space
     forearmBone.parent.updateWorldMatrix(true, false)
     _parentInvMat.copy(forearmBone.parent.matrixWorld).invert()
     _desiredLocal.copy(_tmp).transformDirection(_parentInvMat)
 
-    // Forearm rest direction = direction toward hand bone
     _restDir.copy(handBone.position).normalize()
-
     forearmBone.quaternion.setFromUnitVectors(_restDir, _desiredLocal)
     forearmBone.updateMatrixWorld(true)
+
+    // ── Step 7: Hand rotation override ───────────────────────────────────────
+    // Only applied when a non-zero world Euler has been calibrated.
+    // Converts the desired world quaternion to hand bone local space so the
+    // hand lands in exactly the right world orientation regardless of arm pose.
+    if (handBone && (handTargetEuler.rx !== 0 || handTargetEuler.ry !== 0 || handTargetEuler.rz !== 0)) {
+      _tempEuler.set(
+        THREE.MathUtils.degToRad(handTargetEuler.rx),
+        THREE.MathUtils.degToRad(handTargetEuler.ry),
+        THREE.MathUtils.degToRad(handTargetEuler.rz),
+        'XYZ',
+      )
+      _handTargetQuat.setFromEuler(_tempEuler)
+
+      // hand local quat = inv(forearm world quat) × desired world quat
+      forearmBone.getWorldQuaternion(_forearmWorldQuat)
+      handBone.quaternion.copy(_forearmWorldQuat).invert().multiply(_handTargetQuat)
+      handBone.updateMatrixWorld(true)
+    }
   }
 
   // Per-frame update
@@ -212,5 +348,7 @@ export function useIK(model, skeleton, boneMap, onFrame) {
     setTarget,
     getTarget,
     initIK,
+    setHandRotation,
+    computeAutoHandRotation,
   }
 }

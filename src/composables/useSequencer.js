@@ -3,19 +3,24 @@ import gsap from 'gsap'
 import * as THREE from 'three'
 
 /**
- * Sequencer: animates the IK target through a series of named anchor points.
+ * Sequencer: animates the IK target through a series of named anchor points,
+ * tweening both position AND hand orientation for each anchor.
  *
  * Usage:
  *   playSign(['billOfCap', 'chest', 'belt'])
- *   → moves the right hand to cap, then chest, then belt in sequence
+ *   → moves the right hand to cap, then chest, then belt in sequence,
+ *     applying the calibrated hand rotation at each stop.
  */
-export function useSequencer(getAnchorWorldPos, setTarget, onFrame) {
+export function useSequencer(getAnchorWorldPos, getAnchorRotation, setTarget, setHandRotation, onFrame) {
   const isPlaying = ref(false)
   const currentStep = ref(-1)
   const currentSequence = ref([])
 
   // The position we'll animate (GSAP mutates this, we push it to IK each frame)
   const animatedPos = { x: 0, y: 0, z: 0 }
+
+  // The hand rotation we'll animate (GSAP mutates this, we push it to IK each frame)
+  const animatedRot = { rx: 0, ry: 0, rz: 0 }
 
   // "Sticky anchor" — when set, the IK target continuously follows this
   // anchor's world position every frame, so rotating/moving the model
@@ -34,6 +39,8 @@ export function useSequencer(getAnchorWorldPos, setTarget, onFrame) {
   /**
    * Per-frame update: if we have a sticky anchor and we're not mid-tween,
    * continuously re-resolve the anchor's world position and push it to IK.
+   * (Rotation is applied once when we arrive at the anchor, so no per-frame
+   * rotation update is needed — it persists until the next step.)
    */
   if (onFrame) {
     onFrame(() => {
@@ -65,27 +72,21 @@ export function useSequencer(getAnchorWorldPos, setTarget, onFrame) {
       _currentDelay.kill()
       _currentDelay = null
     }
-    // Also kill any legacy gsapTimeline if somehow present
     stickyAnchor = null
     isAnimating = false
   }
 
   /**
    * Play a sequence of anchor names.
-   * Uses sequential independent tweens so each anchor's world position is
-   * resolved right before its tween fires. This avoids the GSAP timeline
-   * snapping problem (where invalidate().restart() or pre-built timelines
-   * cause tweens to fast-forward to their end position).
    * Returns a promise that resolves when the full sequence completes.
    */
   function playSign(anchorNames, options = {}) {
     const {
-      holdTime = 0.4,     // seconds to pause at each anchor
-      moveTime = 0.35,    // seconds to move between anchors
+      holdTime = 0.4,
+      moveTime = 0.35,
       ease = 'power2.inOut',
     } = options
 
-    // Kill any running animation
     stopCurrent()
 
     currentSequence.value = [...anchorNames]
@@ -94,8 +95,6 @@ export function useSequencer(getAnchorWorldPos, setTarget, onFrame) {
 
     return new Promise((resolve) => {
       let cancelled = false
-
-      // Store cancel handle so stop() can abort this promise chain
       _cancelCurrent = () => { cancelled = true }
 
       function finish() {
@@ -111,6 +110,8 @@ export function useSequencer(getAnchorWorldPos, setTarget, onFrame) {
         if (cancelled) return
         stickyAnchor = null
         isAnimating = true
+
+        // Tween position back to rest
         _currentTween = gsap.to(animatedPos, {
           duration: moveTime,
           x: restPosition.x,
@@ -122,12 +123,21 @@ export function useSequencer(getAnchorWorldPos, setTarget, onFrame) {
           },
           onComplete: finish,
         })
+
+        // Tween rotation back to neutral (no override) in parallel
+        gsap.to(animatedRot, {
+          duration: moveTime,
+          rx: 0, ry: 0, rz: 0,
+          ease,
+          onUpdate: () => {
+            setHandRotation(animatedRot.rx, animatedRot.ry, animatedRot.rz)
+          },
+        })
       }
 
       function step(index) {
         if (cancelled) return
 
-        // All anchors done — return to rest
         if (index >= anchorNames.length) {
           returnToRest()
           return
@@ -138,36 +148,42 @@ export function useSequencer(getAnchorWorldPos, setTarget, onFrame) {
         stickyAnchor = name
         isAnimating = true
 
-        // Resolve the target position NOW (right before tweening),
-        // not at sequence-build time. This is the key fix: each anchor's
-        // world position is evaluated at the moment the hand starts moving
-        // toward it, so it's always accurate regardless of model pose/rotation.
+        // Resolve position and rotation NOW, right before tweening
         const pos = getAnchorWorldPos(name)
         const tx = pos?.x ?? animatedPos.x
         const ty = pos?.y ?? animatedPos.y
         const tz = pos?.z ?? animatedPos.z
 
+        const [targetRx, targetRy, targetRz] = getAnchorRotation(name)
+
+        // Tween position
         _currentTween = gsap.to(animatedPos, {
           duration: moveTime,
-          x: tx,
-          y: ty,
-          z: tz,
+          x: tx, y: ty, z: tz,
           ease,
           onUpdate: () => {
             setTarget(new THREE.Vector3(animatedPos.x, animatedPos.y, animatedPos.z))
           },
           onComplete: () => {
             if (cancelled) return
-            // Hold phase: hand arrived — let the frame callback track the
-            // sticky anchor so the hand stays glued to the bone during the hold
-            // even if the model rotates or moves.
+            // Hold phase — sticky anchor keeps position locked to bone;
+            // rotation is already at target so no extra work needed
             isAnimating = false
             _currentDelay = gsap.delayedCall(holdTime, () => {
               if (cancelled) return
-              // GSAP takes over again for the next move
               isAnimating = true
               step(index + 1)
             })
+          },
+        })
+
+        // Tween rotation in parallel
+        gsap.to(animatedRot, {
+          duration: moveTime,
+          rx: targetRx, ry: targetRy, rz: targetRz,
+          ease,
+          onUpdate: () => {
+            setHandRotation(animatedRot.rx, animatedRot.ry, animatedRot.rz)
           },
         })
       }
@@ -178,7 +194,8 @@ export function useSequencer(getAnchorWorldPos, setTarget, onFrame) {
 
   /**
    * Move to a single anchor (for calibration preview).
-   * After the animation completes, the hand stays locked to the anchor.
+   * Tweens both position and rotation. After the animation completes,
+   * the hand stays locked to the anchor.
    */
   function moveToAnchor(anchorName, duration = 0.5) {
     stopCurrent()
@@ -186,14 +203,15 @@ export function useSequencer(getAnchorWorldPos, setTarget, onFrame) {
     const pos = getAnchorWorldPos(anchorName)
     if (!pos) return
 
+    const [targetRx, targetRy, targetRz] = getAnchorRotation(anchorName)
+
     isPlaying.value = true
     isAnimating = true
 
+    // Tween position
     _currentTween = gsap.to(animatedPos, {
       duration,
-      x: pos.x,
-      y: pos.y,
-      z: pos.z,
+      x: pos.x, y: pos.y, z: pos.z,
       ease: 'power2.inOut',
       onUpdate: () => {
         setTarget(new THREE.Vector3(animatedPos.x, animatedPos.y, animatedPos.z))
@@ -201,31 +219,46 @@ export function useSequencer(getAnchorWorldPos, setTarget, onFrame) {
       onComplete: () => {
         isPlaying.value = false
         isAnimating = false
-        // Lock to this anchor — frame callback will keep it tracked
         stickyAnchor = anchorName
+      },
+    })
+
+    // Tween rotation in parallel
+    gsap.to(animatedRot, {
+      duration,
+      rx: targetRx, ry: targetRy, rz: targetRz,
+      ease: 'power2.inOut',
+      onUpdate: () => {
+        setHandRotation(animatedRot.rx, animatedRot.ry, animatedRot.rz)
       },
     })
   }
 
   /**
-   * Move to rest position
+   * Move to rest position (position + neutral rotation)
    */
   function moveToRest(duration = 0.5) {
     stopCurrent()
-
     isAnimating = true
 
     _currentTween = gsap.to(animatedPos, {
       duration,
-      x: restPosition.x,
-      y: restPosition.y,
-      z: restPosition.z,
+      x: restPosition.x, y: restPosition.y, z: restPosition.z,
       ease: 'power2.inOut',
       onUpdate: () => {
         setTarget(new THREE.Vector3(animatedPos.x, animatedPos.y, animatedPos.z))
       },
       onComplete: () => {
         isAnimating = false
+      },
+    })
+
+    gsap.to(animatedRot, {
+      duration,
+      rx: 0, ry: 0, rz: 0,
+      ease: 'power2.inOut',
+      onUpdate: () => {
+        setHandRotation(animatedRot.rx, animatedRot.ry, animatedRot.rz)
       },
     })
   }

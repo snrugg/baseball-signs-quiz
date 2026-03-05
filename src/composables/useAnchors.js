@@ -3,33 +3,31 @@ import * as THREE from 'three'
 import { detectBonePrefix } from './boneUtils.js'
 
 /**
- * Default anchor definitions: bone suffix + local offset.
+ * Default anchor definitions: bone suffix + local offset + hand rotation.
  * The prefix (e.g. "mixamorig9") is auto-detected at runtime.
  * Offsets are in the bone's local coordinate space and get transformed
  * to world space via the bone's quaternion each frame.
  *
+ * rotation: [rx, ry, rz] in DEGREES, world-space Euler XYZ for the right hand bone.
+ *   [0, 0, 0] = no override (hand stays at natural IK pose)
+ *   Non-zero = hand bone is driven to this world orientation
+ *
  * These are starting values — the calibration UI lets you adjust them.
  */
 const DEFAULT_ANCHOR_DEFS = {
-  billOfCap:   { bone: 'Head',         offset: [0, 0.15, 0.13] },
-  topOfHead:   { bone: 'HeadTop_End',  offset: [0, 0.02, 0] },
-  backOfHead:  { bone: 'Head',         offset: [0, 0.10, -0.10] },
-  nose:        { bone: 'Head',         offset: [0, 0.06, 0.12] },
-  chin:        { bone: 'Head',         offset: [0, -0.02, 0.10] },
-  chest:       { bone: 'Spine2',       offset: [0, 0.05, 0.12] },
-  belt:        { bone: 'Spine1',       offset: [0, -0.10, 0.12] },
-  // LeftArm (bicep) bone with offset toward shoulder so it sits ~0.43 units
-  // from right shoulder — comfortably within reach with a natural elbow bend.
-  leftArm:     { bone: 'LeftArm',      offset: [0, -0.07, 0] },
-  // RightShoulder (clavicle) is NOT in the IK chain, so no feedback loop.
-  // Gives a natural "arm folded toward own shoulder" gesture.
-  rightArm:    { bone: 'RightShoulder', offset: [0, 0, 0.08] },
-  // Right leg (thigh): local +Z has a forward world component (+0.54),
-  // so positive Z offset = anterior (quad) side, negative = posterior (hamstring).
-  frontOfLeg:  { bone: 'RightUpLeg',   offset: [0, -0.10, 0.12] },
-  backOfLeg:   { bone: 'RightUpLeg',   offset: [0, -0.10, -0.12] },
-  frontOfHand: { bone: 'LeftHand',     offset: [0, 0, 0.06] },
-  backOfHand:  { bone: 'LeftHand',     offset: [0, 0, -0.06] },
+  billOfCap:   { bone: 'Head',         offset: [0, 0.15, 0.13],  rotation: [0, 0, 0] },
+  topOfHead:   { bone: 'HeadTop_End',  offset: [0, 0.02, 0],     rotation: [0, 0, 0] },
+  backOfHead:  { bone: 'Head',         offset: [0, 0.10, -0.10], rotation: [0, 0, 0] },
+  nose:        { bone: 'Head',         offset: [0, 0.06, 0.12],  rotation: [0, 0, 0] },
+  chin:        { bone: 'Head',         offset: [0, -0.02, 0.10], rotation: [0, 0, 0] },
+  chest:       { bone: 'Spine2',       offset: [0, 0.05, 0.12],  rotation: [0, 0, 0] },
+  belt:        { bone: 'Spine1',       offset: [0, -0.10, 0.12], rotation: [0, 0, 0] },
+  leftArm:     { bone: 'LeftArm',      offset: [0, -0.07, 0],    rotation: [0, 0, 0] },
+  rightArm:    { bone: 'RightShoulder', offset: [0, 0, 0.08],    rotation: [0, 0, 0] },
+  frontOfLeg:  { bone: 'RightUpLeg',   offset: [0, -0.10, 0.12], rotation: [0, 0, 0] },
+  backOfLeg:   { bone: 'RightUpLeg',   offset: [0, -0.10, -0.12], rotation: [0, 0, 0] },
+  frontOfHand: { bone: 'LeftHand',     offset: [0, 0, 0.06],     rotation: [0, 0, 0] },
+  backOfHand:  { bone: 'LeftHand',     offset: [0, 0, -0.06],    rotation: [0, 0, 0] },
 }
 
 // Human-readable labels for the UI
@@ -116,6 +114,16 @@ export function useAnchors(boneMap, onFrame) {
   }
 
   /**
+   * Get the stored hand rotation for an anchor.
+   * Returns [rx, ry, rz] in degrees (world-space Euler XYZ).
+   * [0, 0, 0] means no override.
+   */
+  function getAnchorRotation(name) {
+    const def = anchorDefs.value[name]
+    return def?.rotation ?? [0, 0, 0]
+  }
+
+  /**
    * Create visible spheres for each anchor (for calibration mode)
    */
   function createSpheres(scene) {
@@ -176,7 +184,7 @@ export function useAnchors(boneMap, onFrame) {
   }
 
   /**
-   * Update an anchor's offset (for calibration)
+   * Update an anchor's position offset (for calibration)
    */
   function setAnchorOffset(name, axis, value) {
     const def = anchorDefs.value[name]
@@ -186,10 +194,27 @@ export function useAnchors(boneMap, onFrame) {
     def.offset[idx] = value
   }
 
+  /**
+   * Update an anchor's hand rotation (for calibration).
+   * axis: 'x' | 'y' | 'z', value: degrees
+   */
+  function setAnchorRotation(name, axis, value) {
+    const def = anchorDefs.value[name]
+    if (!def) return
+    if (!def.rotation) def.rotation = [0, 0, 0]
+    const idx = { x: 0, y: 1, z: 2 }[axis]
+    if (idx === undefined) return
+    def.rotation[idx] = value
+  }
+
   function saveOffsets() {
     const toSave = {}
     for (const [name, def] of Object.entries(anchorDefs.value)) {
-      toSave[name] = { bone: def.bone, offset: [...def.offset] }
+      toSave[name] = {
+        bone: def.bone,
+        offset: [...def.offset],
+        rotation: [...(def.rotation ?? [0, 0, 0])],
+      }
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave))
   }
@@ -198,7 +223,17 @@ export function useAnchors(boneMap, onFrame) {
     try {
       const raw = localStorage.getItem(STORAGE_KEY)
       if (!raw) return null
-      return JSON.parse(raw)
+      const saved = JSON.parse(raw)
+      // Merge with defaults so all fields exist (handles old saves without rotation)
+      const merged = structuredClone(DEFAULT_ANCHOR_DEFS)
+      for (const [name, def] of Object.entries(saved)) {
+        if (merged[name]) {
+          if (def.offset)   merged[name].offset   = def.offset
+          if (def.rotation) merged[name].rotation = def.rotation
+          // rotation defaults to [0,0,0] from DEFAULT_ANCHOR_DEFS if not in save
+        }
+      }
+      return merged
     } catch {
       return null
     }
@@ -216,9 +251,11 @@ export function useAnchors(boneMap, onFrame) {
     anchorPositions,
     anchorNames,
     getAnchorWorldPos,
+    getAnchorRotation,
     createSpheres,
     setSpheresVisible,
     setAnchorOffset,
+    setAnchorRotation,
     saveOffsets,
     resetOffsets,
     updateAnchors,

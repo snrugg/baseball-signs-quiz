@@ -1,5 +1,5 @@
 <script setup>
-import { ref, inject, watch, onMounted } from 'vue'
+import { ref, inject, watch } from 'vue'
 
 const scene = inject('scene')
 const anchors = inject('anchors')
@@ -32,7 +32,6 @@ function toggleSpheres() {
 
 function selectAnchor(name) {
   selectedAnchor.value = name
-  // Move IK hand to this anchor for preview
   if (ik.ikReady.value) {
     sequencer.moveToAnchor(name, 0.5 / animSpeed.value)
   }
@@ -45,6 +44,44 @@ function onOffsetChange(name, axis, event) {
   }
 }
 
+/**
+ * Live-update the hand rotation while dragging a rotation slider.
+ * Stores the value in the anchor data AND immediately applies it to the IK
+ * so the user sees the effect in real time.
+ */
+function onRotationChange(name, axis, event) {
+  const val = parseFloat(event.target.value)
+  if (isNaN(val)) return
+  anchors.setAnchorRotation(name, axis, val)
+  // Push all three axes immediately so the IK solver sees the full rotation
+  const [rx, ry, rz] = anchors.getAnchorRotation(name)
+  ik.setHandRotation(rx, ry, rz)
+}
+
+/**
+ * Compute a smart-default rotation that makes the palm face inward toward
+ * the model, then store it and apply it.
+ */
+function autoRotation(name) {
+  const pos = anchors.getAnchorWorldPos(name)
+  if (!pos) return
+  const [rx, ry, rz] = ik.computeAutoHandRotation(pos)
+  anchors.setAnchorRotation(name, 'x', rx)
+  anchors.setAnchorRotation(name, 'y', ry)
+  anchors.setAnchorRotation(name, 'z', rz)
+  ik.setHandRotation(rx, ry, rz)
+}
+
+/**
+ * Reset the hand rotation for the selected anchor to [0, 0, 0] (natural IK pose).
+ */
+function resetRotation(name) {
+  anchors.setAnchorRotation(name, 'x', 0)
+  anchors.setAnchorRotation(name, 'y', 0)
+  anchors.setAnchorRotation(name, 'z', 0)
+  ik.setHandRotation(0, 0, 0)
+}
+
 function save() {
   anchors.saveOffsets()
   alert('Anchor offsets saved!')
@@ -54,6 +91,7 @@ function reset() {
   if (confirm('Reset all anchors to defaults?')) {
     anchors.resetOffsets()
     selectedAnchor.value = null
+    ik.setHandRotation(0, 0, 0)
   }
 }
 
@@ -136,14 +174,16 @@ function testAllAnchors() {
       </button>
     </div>
 
-    <!-- Offset editor for selected anchor -->
+    <!-- Offset + rotation editor for selected anchor -->
     <div v-if="selectedAnchor" class="offset-editor">
       <h3>{{ anchors.ANCHOR_LABELS[selectedAnchor] }}</h3>
       <p class="bone-name">
         Bone: {{ anchors.anchorDefs.value[selectedAnchor]?.bone }}
       </p>
 
-      <div class="offset-row" v-for="axis in ['x', 'y', 'z']" :key="axis">
+      <!-- Position sliders -->
+      <div class="section-label">Position</div>
+      <div class="offset-row" v-for="axis in ['x', 'y', 'z']" :key="'pos-' + axis">
         <label>{{ axis.toUpperCase() }}</label>
         <input
           type="range"
@@ -155,6 +195,33 @@ function testAllAnchors() {
         />
         <span class="offset-value">
           {{ anchors.anchorDefs.value[selectedAnchor]?.offset[{x:0,y:1,z:2}[axis]]?.toFixed(3) }}
+        </span>
+      </div>
+
+      <!-- Rotation sliders -->
+      <div class="section-label rotation-label">
+        Hand Rotation
+        <span class="rot-actions">
+          <button class="btn-inline" @click="autoRotation(selectedAnchor)" title="Aim palm toward body">Auto</button>
+          <button class="btn-inline btn-inline-reset" @click="resetRotation(selectedAnchor)" title="Remove rotation override">✕</button>
+        </span>
+      </div>
+      <div
+        class="offset-row"
+        v-for="(axis, idx) in ['x', 'y', 'z']"
+        :key="'rot-' + axis"
+      >
+        <label class="rot-label">R{{ axis.toUpperCase() }}</label>
+        <input
+          type="range"
+          :min="-180"
+          :max="180"
+          step="1"
+          :value="anchors.anchorDefs.value[selectedAnchor]?.rotation?.[idx] ?? 0"
+          @input="onRotationChange(selectedAnchor, axis, $event)"
+        />
+        <span class="offset-value">
+          {{ (anchors.anchorDefs.value[selectedAnchor]?.rotation?.[idx] ?? 0).toFixed(0) }}&deg;
         </span>
       </div>
     </div>
@@ -281,6 +348,59 @@ function testAllAnchors() {
   font-family: monospace;
 }
 
+/* Section divider labels inside the offset editor */
+.section-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #88aaff;
+  opacity: 0.7;
+  margin: 10px 0 4px;
+}
+
+.section-label:first-of-type {
+  margin-top: 0;
+}
+
+.rotation-label {
+  color: #ffaa44;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Inline action buttons beside the Rotation label */
+.rot-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.btn-inline {
+  padding: 1px 7px;
+  font-size: 0.68rem;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 170, 68, 0.4);
+  background: rgba(255, 170, 68, 0.12);
+  color: #ffaa44;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.btn-inline:hover {
+  background: rgba(255, 170, 68, 0.28);
+}
+
+.btn-inline-reset {
+  border-color: rgba(255, 100, 100, 0.35);
+  background: rgba(255, 100, 100, 0.1);
+  color: #ff8888;
+}
+
+.btn-inline-reset:hover {
+  background: rgba(255, 100, 100, 0.25);
+}
+
 .offset-row {
   display: flex;
   align-items: center;
@@ -295,10 +415,20 @@ function testAllAnchors() {
   color: #88aaff;
 }
 
+/* Rotation axis labels use amber instead of blue */
+.rot-label {
+  color: #ffaa44 !important;
+}
+
 .offset-row input[type="range"] {
   flex: 1;
   height: 4px;
   accent-color: #4488ff;
+}
+
+/* Rotation sliders get amber accent */
+.offset-row:has(.rot-label) input[type="range"] {
+  accent-color: #ffaa44;
 }
 
 .offset-value {

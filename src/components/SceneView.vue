@@ -30,17 +30,25 @@ const {
   anchorPositions,
   anchorNames,
   getAnchorWorldPos,
+  getAnchorRotation,
   createSpheres,
   setSpheresVisible,
   setAnchorOffset,
+  setAnchorRotation,
   saveOffsets,
   resetOffsets,
 } = useAnchors(boneMap, onFrame)
 
 // Initialize IK
-const { ikReady, setTarget, getTarget } = useIK(model, skeleton, boneMap, onFrame)
+const {
+  ikReady,
+  setTarget,
+  getTarget,
+  setHandRotation,
+  computeAutoHandRotation,
+} = useIK(model, skeleton, boneMap, onFrame)
 
-// Initialize sequencer
+// Initialize sequencer — now receives rotation accessors alongside position
 const {
   isPlaying,
   currentStep,
@@ -50,7 +58,7 @@ const {
   moveToRest,
   stop,
   initPosition,
-} = useSequencer(getAnchorWorldPos, setTarget, onFrame)
+} = useSequencer(getAnchorWorldPos, getAnchorRotation, setTarget, setHandRotation, onFrame)
 
 // Provide everything to child components
 provide('scene', {
@@ -72,15 +80,23 @@ provide('anchors', {
   anchorPositions,
   anchorNames,
   getAnchorWorldPos,
+  getAnchorRotation,
   createSpheres,
   setSpheresVisible,
   setAnchorOffset,
+  setAnchorRotation,
   saveOffsets,
   resetOffsets,
   ANCHOR_LABELS,
 })
 
-provide('ik', { ikReady, setTarget, getTarget })
+provide('ik', {
+  ikReady,
+  setTarget,
+  getTarget,
+  setHandRotation,
+  computeAutoHandRotation,
+})
 
 provide('sequencer', {
   isPlaying,

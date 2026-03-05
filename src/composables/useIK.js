@@ -11,10 +11,12 @@ import { detectBonePrefix } from './boneUtils.js'
  * Elbow prefers to point down and slightly outward (character's right = +X).
  *
  * Hand orientation:
- *   setHandRotation(rx, ry, rz) — override the hand bone's world-space Euler.
+ *   setHandRotation(rx, ry, rz) — override the hand bone's Euler in MODEL-LOCAL
+ *   space (relative to the model's own rotation), so the orientation travels
+ *   with model rotation/translation automatically.
  *   [0, 0, 0] = no override (hand stays at natural FBX/IK pose).
  *   computeAutoHandRotation(anchorWorldPos) — heuristic: rotate palm to face
- *   inward toward the model's center, as a calibration starting point.
+ *   inward toward the model's center; returns model-local Euler degrees.
  */
 export function useIK(model, skeleton, boneMap, onFrame) {
   const ikReady = ref(false)
@@ -53,6 +55,7 @@ export function useIK(model, skeleton, boneMap, onFrame) {
   // Reusable temp objects — hand rotation
   const _handTargetQuat   = new THREE.Quaternion()
   const _forearmWorldQuat = new THREE.Quaternion()
+  const _modelWorldQuat   = new THREE.Quaternion()
   const _tempEuler        = new THREE.Euler()
 
   function initIK() {
@@ -144,8 +147,8 @@ export function useIK(model, skeleton, boneMap, onFrame) {
   }
 
   /**
-   * Set the target world-space Euler rotation for the right hand bone.
-   * rx, ry, rz are in DEGREES.
+   * Set the target MODEL-LOCAL Euler rotation for the right hand bone.
+   * rx, ry, rz are in DEGREES, relative to the model's own orientation.
    * All zeros = no override (hand stays at natural IK result).
    */
   function setHandRotation(rx, ry, rz) {
@@ -202,8 +205,13 @@ export function useIK(model, skeleton, boneMap, onFrame) {
     // Apply correction to produce the target world quaternion
     const targetWorldQuat = correctionQuat.multiply(handWorldQuat)
 
-    // Convert to Euler XYZ degrees
-    const euler = new THREE.Euler().setFromQuaternion(targetWorldQuat, 'XYZ')
+    // Convert world → model-local so the stored value travels with model rotation.
+    // inv(modelWorldQuat) × targetWorldQuat = model-local target quat
+    const modelWorldQuat = new THREE.Quaternion()
+    model.value.getWorldQuaternion(modelWorldQuat)
+    const modelLocalQuat = modelWorldQuat.clone().invert().multiply(targetWorldQuat)
+
+    const euler = new THREE.Euler().setFromQuaternion(modelLocalQuat, 'XYZ')
     return [
       THREE.MathUtils.radToDeg(euler.x),
       THREE.MathUtils.radToDeg(euler.y),
@@ -300,9 +308,10 @@ export function useIK(model, skeleton, boneMap, onFrame) {
     forearmBone.updateMatrixWorld(true)
 
     // ── Step 7: Hand rotation override ───────────────────────────────────────
-    // Only applied when a non-zero world Euler has been calibrated.
-    // Converts the desired world quaternion to hand bone local space so the
-    // hand lands in exactly the right world orientation regardless of arm pose.
+    // Stored Euler angles are in MODEL-LOCAL space so the hand orientation
+    // travels with model rotation and translation automatically.
+    // Convert model-local → world by premultiplying with model's world quat,
+    // then convert world → hand-bone-local via inv(forearm world quat).
     if (handBone && (handTargetEuler.rx !== 0 || handTargetEuler.ry !== 0 || handTargetEuler.rz !== 0)) {
       _tempEuler.set(
         THREE.MathUtils.degToRad(handTargetEuler.rx),
@@ -310,7 +319,10 @@ export function useIK(model, skeleton, boneMap, onFrame) {
         THREE.MathUtils.degToRad(handTargetEuler.rz),
         'XYZ',
       )
+      // Model-local quat → world quat
       _handTargetQuat.setFromEuler(_tempEuler)
+      model.value.getWorldQuaternion(_modelWorldQuat)
+      _handTargetQuat.premultiply(_modelWorldQuat)
 
       // hand local quat = inv(forearm world quat) × desired world quat
       forearmBone.getWorldQuaternion(_forearmWorldQuat)

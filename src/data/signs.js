@@ -12,14 +12,14 @@
  */
 
 /** The anchor name that acts as the indicator sign in Game Day mode */
-export const INDICATOR = 'topOfHead'
+export const INDICATOR = 'billOfCap'
 
 /**
  * Anchor name → baseball call name.
  * Anchors not listed here (and not INDICATOR) are decoys with no meaning.
  */
 export const SIGN_MEANINGS = {
-  billOfCap: 'Steal',
+  topOfHead: 'Steal',
   nose:      'Take',
   chin:      'Bunt',
   chest:     'Hit and Run',

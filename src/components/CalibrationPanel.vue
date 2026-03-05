@@ -8,6 +8,7 @@ const sequencer = inject('sequencer')
 
 const selectedAnchor = ref(null)
 const spheresVisible = ref(true)
+const animSpeed = ref(1.0)  // playback speed multiplier (1 = normal, 2 = 2× faster)
 
 // Initialize spheres once model is loaded
 watch(
@@ -33,7 +34,7 @@ function selectAnchor(name) {
   selectedAnchor.value = name
   // Move IK hand to this anchor for preview
   if (ik.ikReady.value) {
-    sequencer.moveToAnchor(name)
+    sequencer.moveToAnchor(name, 0.5 / animSpeed.value)
   }
 }
 
@@ -57,12 +58,18 @@ function reset() {
 }
 
 function testSequence() {
-  sequencer.playSign(['billOfCap', 'chest', 'belt'])
+  sequencer.playSign(['billOfCap', 'chest', 'belt'], {
+    holdTime: 0.4 / animSpeed.value,
+    moveTime: 0.35 / animSpeed.value,
+  })
 }
 
 function testAllAnchors() {
   const allNames = anchors.anchorNames.value
-  sequencer.playSign(allNames, { holdTime: 0.6, moveTime: 0.4 })
+  sequencer.playSign(allNames, {
+    holdTime: 0.6 / animSpeed.value,
+    moveTime: 0.4 / animSpeed.value,
+  })
 }
 </script>
 
@@ -102,6 +109,17 @@ function testAllAnchors() {
           @input="scene.setModelOffsetX(parseFloat($event.target.value))"
         />
         <span class="offset-value">{{ scene.modelOffsetX.value.toFixed(2) }}</span>
+      </div>
+      <div class="offset-row">
+        <label title="Animation speed" class="speed-label">▶▶</label>
+        <input
+          type="range"
+          min="0.25"
+          max="4"
+          step="0.25"
+          v-model.number="animSpeed"
+        />
+        <span class="offset-value">{{ animSpeed.toFixed(2) }}&times;</span>
       </div>
     </div>
 
@@ -195,6 +213,12 @@ function testAllAnchors() {
   font-size: 1rem;
   width: 20px;
   text-align: center;
+}
+
+.speed-label {
+  font-size: 0.6rem !important;
+  letter-spacing: -1px;
+  opacity: 0.8;
 }
 
 .panel-header {

@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import SceneView from './components/SceneView.vue'
 import CalibrationPanel from './components/CalibrationPanel.vue'
+import QuizPanel from './components/QuizPanel.vue'
 
 const mode = ref('calibrate') // 'calibrate' | 'quiz' (quiz coming later)
 </script>
@@ -29,11 +30,8 @@ const mode = ref('calibrate') // 'calibrate' | 'quiz' (quiz coming later)
     <!-- Calibration mode -->
     <CalibrationPanel v-if="mode === 'calibrate'" />
 
-    <!-- Quiz mode (placeholder) -->
-    <div v-if="mode === 'quiz'" class="quiz-placeholder">
-      <p>Quiz mode coming soon</p>
-      <p class="hint">Calibrate your anchor points first</p>
-    </div>
+    <!-- Quiz mode -->
+    <QuizPanel v-if="mode === 'quiz'" />
   </SceneView>
 </template>
 
@@ -68,29 +66,5 @@ const mode = ref('calibrate') // 'calibrate' | 'quiz' (quiz coming later)
   color: #fff;
   background: rgba(68, 136, 255, 0.3);
   border-color: #4488ff;
-}
-
-.quiz-placeholder {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  text-align: center;
-  background: rgba(20, 20, 40, 0.85);
-  backdrop-filter: blur(8px);
-  border-radius: 16px;
-  padding: 32px 48px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  z-index: 20;
-}
-
-.quiz-placeholder p {
-  font-size: 1.1rem;
-  margin-bottom: 8px;
-}
-
-.quiz-placeholder .hint {
-  font-size: 0.85rem;
-  opacity: 0.5;
 }
 </style>

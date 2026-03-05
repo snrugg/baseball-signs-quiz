@@ -83,10 +83,10 @@ export function useScene(canvasRef) {
     camera.lookAt(0, 1, 0)
 
     // Lighting — bright outdoor sunlight
-    const ambient = new THREE.AmbientLight(0xfff8e7, 0.8)
+    const ambient = new THREE.AmbientLight(0xfff8e7, 1.4)
     scene.add(ambient)
 
-    const sun = new THREE.DirectionalLight(0xfffbe6, 2.0)
+    const sun = new THREE.DirectionalLight(0xfffbe6, 2.5)
     sun.position.set(3, 5, 4)
     sun.castShadow = true
     sun.shadow.mapSize.set(1024, 1024)
@@ -98,8 +98,13 @@ export function useScene(canvasRef) {
     sun.shadow.camera.bottom = -3
     scene.add(sun)
 
-    const fill = new THREE.DirectionalLight(0x87CEEB, 0.5) // sky-colored fill
-    fill.position.set(-2, 3, -1)
+    // Front fill — illuminates hands and face directly toward camera
+    const frontFill = new THREE.DirectionalLight(0xfff0e0, 1.8)
+    frontFill.position.set(0, 1.5, 5)
+    scene.add(frontFill)
+
+    const fill = new THREE.DirectionalLight(0x87CEEB, 0.8) // sky-colored fill
+    fill.position.set(-2, 3, 2)
     scene.add(fill)
 
     // Ground — baseball infield dirt
@@ -150,8 +155,15 @@ export function useScene(canvasRef) {
     const w = parent.clientWidth
     const h = parent.clientHeight
     renderer.setSize(w, h)
-    camera.aspect = w / h
-    camera.updateProjectionMatrix()
+
+    // Shift the character into the visible area to the left of the side panel.
+    // The panel is 280px wide + 12px margin = 292px from the right edge.
+    // setViewOffset renders as if the full virtual canvas is (w + panelW) wide,
+    // but shows only the rightmost w pixels — placing the 3D center at the
+    // midpoint of the visible (non-panel) area.
+    const panelW = 292
+    camera.setViewOffset(w + panelW, h, panelW, 0, w, h)
+    // setViewOffset internally updates aspect and calls updateProjectionMatrix
   }
 
   function loadModel() {
@@ -235,6 +247,7 @@ export function useScene(canvasRef) {
         const modelCenter = finalBox.getCenter(new THREE.Vector3())
         camera.position.set(0, modelCenter.y, desiredHeight * 1.6)
         camera.lookAt(0, modelCenter.y, 0)
+        resize() // reapply setViewOffset with updated camera position
 
         loading.value = false
       },

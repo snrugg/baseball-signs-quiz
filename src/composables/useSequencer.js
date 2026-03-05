@@ -16,13 +16,17 @@ export function useSequencer(getAnchorWorldPos, setTarget, onFrame) {
 
   // The position we'll animate (GSAP mutates this, we push it to IK each frame)
   const animatedPos = { x: 0, y: 0, z: 0 }
-  let gsapTimeline = null
 
   // "Sticky anchor" — when set, the IK target continuously follows this
   // anchor's world position every frame, so rotating/moving the model
   // keeps the hand locked on the body part.
   let stickyAnchor = null
   let isAnimating = false  // true while a GSAP tween is actively running
+
+  // Handles for the currently-running sequential animation so stop() can abort it
+  let _currentTween = null
+  let _currentDelay = null
+  let _cancelCurrent = null
 
   // Start position: where the hand rests between signs
   const restPosition = new THREE.Vector3(0.3, 1.0, 0.2)
@@ -46,7 +50,32 @@ export function useSequencer(getAnchorWorldPos, setTarget, onFrame) {
   }
 
   /**
+   * Internal: kill whatever is currently running (tween, delay, or promise chain).
+   */
+  function stopCurrent() {
+    if (_cancelCurrent) {
+      _cancelCurrent()
+      _cancelCurrent = null
+    }
+    if (_currentTween) {
+      _currentTween.kill()
+      _currentTween = null
+    }
+    if (_currentDelay) {
+      _currentDelay.kill()
+      _currentDelay = null
+    }
+    // Also kill any legacy gsapTimeline if somehow present
+    stickyAnchor = null
+    isAnimating = false
+  }
+
+  /**
    * Play a sequence of anchor names.
+   * Uses sequential independent tweens so each anchor's world position is
+   * resolved right before its tween fires. This avoids the GSAP timeline
+   * snapping problem (where invalidate().restart() or pre-built timelines
+   * cause tweens to fast-forward to their end position).
    * Returns a promise that resolves when the full sequence completes.
    */
   function playSign(anchorNames, options = {}) {
@@ -56,86 +85,94 @@ export function useSequencer(getAnchorWorldPos, setTarget, onFrame) {
       ease = 'power2.inOut',
     } = options
 
+    // Kill any running animation
+    stopCurrent()
+
+    currentSequence.value = [...anchorNames]
+    currentStep.value = -1
+    isPlaying.value = true
+
     return new Promise((resolve) => {
-      // Kill any running animation
-      if (gsapTimeline) {
-        gsapTimeline.kill()
+      let cancelled = false
+
+      // Store cancel handle so stop() can abort this promise chain
+      _cancelCurrent = () => { cancelled = true }
+
+      function finish() {
+        if (cancelled) return
+        isPlaying.value = false
+        isAnimating = false
+        currentStep.value = -1
+        stickyAnchor = null
+        resolve()
       }
 
-      stickyAnchor = null
-      currentSequence.value = [...anchorNames]
-      currentStep.value = -1
-      isPlaying.value = true
-      isAnimating = true
-
-      gsapTimeline = gsap.timeline({
-        onComplete: () => {
-          isPlaying.value = false
-          isAnimating = false
-          currentStep.value = -1
-          stickyAnchor = null
-          resolve()
-        },
-      })
-
-      for (let i = 0; i < anchorNames.length; i++) {
-        const name = anchorNames[i]
-
-        gsapTimeline.call(() => {
-          currentStep.value = i
-          stickyAnchor = name
-        })
-
-        // Animate to the anchor's current world position.
-        // We compute it at build time — during hold, the sticky anchor
-        // frame callback keeps it locked.
-        gsapTimeline.to(animatedPos, {
+      function returnToRest() {
+        if (cancelled) return
+        stickyAnchor = null
+        isAnimating = true
+        _currentTween = gsap.to(animatedPos, {
           duration: moveTime,
+          x: restPosition.x,
+          y: restPosition.y,
+          z: restPosition.z,
           ease,
-          onStart: function () {
-            // Re-resolve position at tween start for accuracy
-            const pos = getAnchorWorldPos(name)
-            if (pos) {
-              this.vars.x = pos.x
-              this.vars.y = pos.y
-              this.vars.z = pos.z
-              this.invalidate().restart()
-            }
-          },
           onUpdate: () => {
             setTarget(new THREE.Vector3(animatedPos.x, animatedPos.y, animatedPos.z))
           },
-          ...(() => {
-            const pos = getAnchorWorldPos(name)
-            return pos ? { x: pos.x, y: pos.y, z: pos.z } : {}
-          })(),
-        })
-
-        // Hold at position — during hold, the sticky anchor frame callback
-        // keeps the IK target tracking the bone even if the model moves.
-        gsapTimeline.call(() => {
-          isAnimating = false // let frame callback take over during hold
-        })
-        gsapTimeline.to({}, { duration: holdTime })
-        gsapTimeline.call(() => {
-          isAnimating = true // GSAP takes over for the next move
+          onComplete: finish,
         })
       }
 
-      // Return to rest position
-      gsapTimeline.call(() => {
-        stickyAnchor = null
-      })
-      gsapTimeline.to(animatedPos, {
-        duration: moveTime,
-        x: restPosition.x,
-        y: restPosition.y,
-        z: restPosition.z,
-        ease,
-        onUpdate: () => {
-          setTarget(new THREE.Vector3(animatedPos.x, animatedPos.y, animatedPos.z))
-        },
-      })
+      function step(index) {
+        if (cancelled) return
+
+        // All anchors done — return to rest
+        if (index >= anchorNames.length) {
+          returnToRest()
+          return
+        }
+
+        const name = anchorNames[index]
+        currentStep.value = index
+        stickyAnchor = name
+        isAnimating = true
+
+        // Resolve the target position NOW (right before tweening),
+        // not at sequence-build time. This is the key fix: each anchor's
+        // world position is evaluated at the moment the hand starts moving
+        // toward it, so it's always accurate regardless of model pose/rotation.
+        const pos = getAnchorWorldPos(name)
+        const tx = pos?.x ?? animatedPos.x
+        const ty = pos?.y ?? animatedPos.y
+        const tz = pos?.z ?? animatedPos.z
+
+        _currentTween = gsap.to(animatedPos, {
+          duration: moveTime,
+          x: tx,
+          y: ty,
+          z: tz,
+          ease,
+          onUpdate: () => {
+            setTarget(new THREE.Vector3(animatedPos.x, animatedPos.y, animatedPos.z))
+          },
+          onComplete: () => {
+            if (cancelled) return
+            // Hold phase: hand arrived — let the frame callback track the
+            // sticky anchor so the hand stays glued to the bone during the hold
+            // even if the model rotates or moves.
+            isAnimating = false
+            _currentDelay = gsap.delayedCall(holdTime, () => {
+              if (cancelled) return
+              // GSAP takes over again for the next move
+              isAnimating = true
+              step(index + 1)
+            })
+          },
+        })
+      }
+
+      step(0)
     })
   }
 
@@ -144,16 +181,15 @@ export function useSequencer(getAnchorWorldPos, setTarget, onFrame) {
    * After the animation completes, the hand stays locked to the anchor.
    */
   function moveToAnchor(anchorName, duration = 0.5) {
-    if (gsapTimeline) gsapTimeline.kill()
+    stopCurrent()
 
     const pos = getAnchorWorldPos(anchorName)
     if (!pos) return
 
-    stickyAnchor = null
     isPlaying.value = true
     isAnimating = true
 
-    gsap.to(animatedPos, {
+    _currentTween = gsap.to(animatedPos, {
       duration,
       x: pos.x,
       y: pos.y,
@@ -175,12 +211,11 @@ export function useSequencer(getAnchorWorldPos, setTarget, onFrame) {
    * Move to rest position
    */
   function moveToRest(duration = 0.5) {
-    if (gsapTimeline) gsapTimeline.kill()
+    stopCurrent()
 
-    stickyAnchor = null
     isAnimating = true
 
-    gsap.to(animatedPos, {
+    _currentTween = gsap.to(animatedPos, {
       duration,
       x: restPosition.x,
       y: restPosition.y,
@@ -199,14 +234,9 @@ export function useSequencer(getAnchorWorldPos, setTarget, onFrame) {
    * Stop any running animation
    */
   function stop() {
-    if (gsapTimeline) {
-      gsapTimeline.kill()
-      gsapTimeline = null
-    }
+    stopCurrent()
     isPlaying.value = false
-    isAnimating = false
     currentStep.value = -1
-    stickyAnchor = null
   }
 
   /**

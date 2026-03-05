@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, inject } from 'vue'
+import { ref, computed, inject, onMounted, onBeforeUnmount } from 'vue'
 import { SIGN_MEANINGS, INDICATOR } from '../data/signs.js'
 
 const anchors  = inject('anchors')
@@ -130,9 +130,20 @@ function startQuiz() {
   if (mode.value === 'justSign') startJustSign()
   else startGameDay()
 }
+
+// ── Mobile teleport ───────────────────────────────────────────
+// On narrow screens the quiz panel teleports into #quiz-portal (below the
+// canvas in App.vue's flex layout) so it never overlaps the Three.js canvas.
+// This eliminates both the character-centering problem and touch-event
+// conflicts caused by the canvas's touch-action:none.
+const isMobile = ref(false)
+function checkMobile() { isMobile.value = window.innerWidth <= 600 }
+onMounted(() => { checkMobile(); window.addEventListener('resize', checkMobile) })
+onBeforeUnmount(() => window.removeEventListener('resize', checkMobile))
 </script>
 
 <template>
+  <Teleport to="#quiz-portal" :disabled="!isMobile">
   <div class="quiz-panel">
 
     <!-- Header with score -->
@@ -256,6 +267,7 @@ function startQuiz() {
     </div>
 
   </div>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -602,15 +614,29 @@ function startQuiz() {
 }
 
 /* ── Mobile ────────────────────────────────── */
+/* On mobile the quiz panel teleports to #quiz-portal, which sits BELOW
+   the canvas in a flex-column layout (see App.vue).  The panel therefore
+   fills its own space — no absolute positioning or max-height needed. */
 @media (max-width: 600px) {
   .quiz-panel {
+    position: relative;
     top: auto;
-    bottom: 0;
-    right: 0;
-    left: 0;
+    right: auto;
+    bottom: auto;
+    left: auto;
     width: 100%;
-    max-height: 55%;
+    height: 100%;
+    max-height: none;
     border-radius: 12px 12px 0 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+    /* safe-area padding for iPhone notch */
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+    /* allow native touch scrolling */
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 }
 </style>

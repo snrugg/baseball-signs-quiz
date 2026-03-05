@@ -156,14 +156,20 @@ export function useScene(canvasRef) {
     const h = parent.clientHeight
     renderer.setSize(w, h)
 
-    // Shift the character into the visible area to the left of the side panel.
-    // The panel is 280px wide + 12px margin = 292px from the right edge.
-    // setViewOffset renders as if the full virtual canvas is (w + panelW) wide,
-    // but shows only the rightmost w pixels — placing the 3D center at the
-    // midpoint of the visible (non-panel) area.
-    const panelW = 292
-    camera.setViewOffset(w + panelW, h, panelW, 0, w, h)
-    // setViewOffset internally updates aspect and calls updateProjectionMatrix
+    if (window.innerWidth > 600) {
+      // Desktop: shift the character left to account for the 280px side panel.
+      // setViewOffset renders as if the full virtual canvas is (w + panelW) wide,
+      // but shows only the left w pixels — centering the 3D scene in the
+      // visible (non-panel) area.
+      const panelW = 292 // 280px panel + 12px gap
+      camera.setViewOffset(w + panelW, h, panelW, 0, w, h)
+      // setViewOffset internally updates aspect and calls updateProjectionMatrix
+    } else {
+      // Mobile: the quiz panel is in its own section BELOW the canvas (flex layout),
+      // so the canvas already fills only the scene area. No offset needed.
+      camera.clearViewOffset()
+      camera.updateProjectionMatrix()
+    }
   }
 
   function loadModel() {

@@ -15,11 +15,14 @@ import { detectBonePrefix } from './boneUtils.js'
  * These are starting values — the calibration UI lets you adjust them.
  */
 const DEFAULT_ANCHOR_DEFS = {
-  billOfCap:   { bone: 'Head',         offset: [0, 0.15, 0.13],  rotation: [0, 0, 0] },
-  topOfHead:   { bone: 'HeadTop_End',  offset: [0, 0.02, 0],     rotation: [0, 0, 0] },
-  backOfHead:  { bone: 'Head',         offset: [0, 0.10, -0.10], rotation: [0, 0, 0] },
-  nose:        { bone: 'Head',         offset: [0, 0.06, 0.12],  rotation: [0, 0, 0] },
-  chin:        { bone: 'Head',         offset: [0, -0.02, 0.10], rotation: [0, 0, 0] },
+  billOfCap:   { bone: 'Head',         offset: [0, 0.15, 0.13],   rotation: [0, 0, 0] },
+  topOfHead:   { bone: 'HeadTop_End',  offset: [0, 0.02, 0],      rotation: [0, 0, 0] },
+  backOfHead:  { bone: 'Head',         offset: [0, 0.10, -0.10],  rotation: [0, 0, 0] },
+  nose:        { bone: 'Head',         offset: [0, 0.06, 0.12],   rotation: [0, 0, 0] },
+  chin:        { bone: 'Head',         offset: [0, -0.02, 0.10],  rotation: [0, 0, 0] },
+  // Ears: lateral offset on head bone local X axis (+X = character's right)
+  leftEar:     { bone: 'Head',         offset: [-0.09, 0.03, 0.02], rotation: [0, 0, 0] },
+  rightEar:    { bone: 'Head',         offset: [0.09, 0.03, 0.02],  rotation: [0, 0, 0] },
   chest:       { bone: 'Spine2',       offset: [0, 0.05, 0.12],  rotation: [0, 0, 0] },
   belt:        { bone: 'Spine1',       offset: [0, -0.10, 0.12], rotation: [0, 0, 0] },
   leftArm:     { bone: 'LeftArm',      offset: [0, -0.07, 0],    rotation: [0, 0, 0] },
@@ -37,6 +40,8 @@ export const ANCHOR_LABELS = {
   backOfHead:  'Back of Head',
   nose:        'Nose',
   chin:        'Chin',
+  leftEar:     'Left Ear',
+  rightEar:    'Right Ear',
   chest:       'Chest',
   belt:        'Belt',
   leftArm:     'Left Arm',
@@ -54,6 +59,8 @@ const ANCHOR_COLORS = {
   backOfHead:  0xff8844,
   nose:        0xffaa44,
   chin:        0xffcc44,
+  leftEar:     0xffee44,
+  rightEar:    0xffff88,
   chest:       0x44ff44,
   belt:        0x44ffaa,
   leftArm:     0x44aaff,

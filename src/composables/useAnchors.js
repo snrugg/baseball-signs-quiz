@@ -73,9 +73,65 @@ const ANCHOR_COLORS = {
 
 const STORAGE_KEY = 'baseballSigns_anchorOffsets'
 
+/**
+ * Merge a saved/fetched calibration object with DEFAULT_ANCHOR_DEFS so that:
+ *  - All known anchors exist (new anchors added in code won't be missing)
+ *  - Saved offset/rotation values override the hardcoded defaults
+ *  - Missing fields (e.g. rotation absent from old save) fall back to defaults
+ */
+function mergeWithDefaults(saved) {
+  if (!saved || typeof saved !== 'object') return null
+  const merged = structuredClone(DEFAULT_ANCHOR_DEFS)
+  for (const [name, def] of Object.entries(saved)) {
+    if (merged[name]) {
+      if (Array.isArray(def.offset))   merged[name].offset   = def.offset
+      if (Array.isArray(def.rotation)) merged[name].rotation = def.rotation
+    }
+  }
+  return merged
+}
+
+/** Read the local-storage copy (synchronous, used for instant startup). */
+function loadLocalStorage() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Try to fetch /calibration.json from the public folder.
+ * Returns merged anchor defs on success, null on failure (404 or parse error).
+ * Uses import.meta.env.BASE_URL so it works on both localhost and GitHub Pages.
+ */
+async function loadCalibrationFile() {
+  try {
+    const url = import.meta.env.BASE_URL + 'calibration.json'
+    const res = await fetch(url)
+    if (!res.ok) return null          // 404 is expected when no file exists yet
+    const data = await res.json()
+    return mergeWithDefaults(data)
+  } catch {
+    return null
+  }
+}
+
 export function useAnchors(boneMap, onFrame) {
-  // Reactive anchor definitions (so calibration UI can edit offsets)
-  const anchorDefs = ref(loadSavedOffsets() || structuredClone(DEFAULT_ANCHOR_DEFS))
+  // Synchronous init: use localStorage so there's no blank-flash on reload.
+  // calibration.json (if present) will overwrite this shortly after.
+  const anchorDefs = ref(mergeWithDefaults(loadLocalStorage()) ?? structuredClone(DEFAULT_ANCHOR_DEFS))
+
+  // Async: fetch calibration.json — if it exists it is authoritative and
+  // overrides localStorage. This completes well before the model finishes
+  // loading so there's no visible jump.
+  loadCalibrationFile().then(data => {
+    if (data) {
+      anchorDefs.value = data
+      console.log('Loaded calibration from calibration.json')
+    }
+  })
 
   // Current world-space positions (updated each frame)
   const anchorPositions = ref({})
@@ -93,16 +149,10 @@ export function useAnchors(boneMap, onFrame) {
   const _offset = new THREE.Vector3()
   const _quat = new THREE.Quaternion()
 
-  /**
-   * Resolve a bone suffix to a full bone name using the detected prefix
-   */
   function fullBoneName(suffix) {
     return `${bonePrefix}${suffix}`
   }
 
-  /**
-   * Compute the world-space position of a named anchor
-   */
   function getAnchorWorldPos(name, target) {
     const def = anchorDefs.value[name]
     if (!def) return null
@@ -120,19 +170,11 @@ export function useAnchors(boneMap, onFrame) {
     return t
   }
 
-  /**
-   * Get the stored hand rotation for an anchor.
-   * Returns [rx, ry, rz] in degrees (world-space Euler XYZ).
-   * [0, 0, 0] means no override.
-   */
   function getAnchorRotation(name) {
     const def = anchorDefs.value[name]
     return def?.rotation ?? [0, 0, 0]
   }
 
-  /**
-   * Create visible spheres for each anchor (for calibration mode)
-   */
   function createSpheres(scene) {
     if (sphereGroup) return
     sphereGroup = new THREE.Group()
@@ -158,13 +200,9 @@ export function useAnchors(boneMap, onFrame) {
     if (sphereGroup) sphereGroup.visible = visible
   }
 
-  /**
-   * Update all anchor world positions — called each frame
-   */
   function updateAnchors() {
     if (!boneMap.value || Object.keys(boneMap.value).length === 0) return
 
-    // Detect prefix on first valid frame
     if (!bonePrefix) {
       bonePrefix = detectBonePrefix(boneMap.value)
       console.log('Detected bone prefix:', bonePrefix)
@@ -175,8 +213,6 @@ export function useAnchors(boneMap, onFrame) {
       const pos = getAnchorWorldPos(name, new THREE.Vector3())
       if (pos) {
         positions[name] = pos
-
-        // Update sphere positions if visible
         if (showSpheres && anchorMeshes[name]) {
           anchorMeshes[name].position.copy(pos)
         }
@@ -185,14 +221,10 @@ export function useAnchors(boneMap, onFrame) {
     anchorPositions.value = positions
   }
 
-  // Hook into the render loop
   if (onFrame) {
     onFrame(updateAnchors)
   }
 
-  /**
-   * Update an anchor's position offset (for calibration)
-   */
   function setAnchorOffset(name, axis, value) {
     const def = anchorDefs.value[name]
     if (!def) return
@@ -201,10 +233,6 @@ export function useAnchors(boneMap, onFrame) {
     def.offset[idx] = value
   }
 
-  /**
-   * Update an anchor's hand rotation (for calibration).
-   * axis: 'x' | 'y' | 'z', value: degrees
-   */
   function setAnchorRotation(name, axis, value) {
     const def = anchorDefs.value[name]
     if (!def) return
@@ -214,36 +242,42 @@ export function useAnchors(boneMap, onFrame) {
     def.rotation[idx] = value
   }
 
-  function saveOffsets() {
-    const toSave = {}
+  /**
+   * Build the calibration payload from current anchorDefs.
+   */
+  function buildCalibrationData() {
+    const out = {}
     for (const [name, def] of Object.entries(anchorDefs.value)) {
-      toSave[name] = {
-        bone: def.bone,
-        offset: [...def.offset],
+      out[name] = {
+        bone:     def.bone,
+        offset:   [...def.offset],
         rotation: [...(def.rotation ?? [0, 0, 0])],
       }
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave))
+    return out
   }
 
-  function loadSavedOffsets() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY)
-      if (!raw) return null
-      const saved = JSON.parse(raw)
-      // Merge with defaults so all fields exist (handles old saves without rotation)
-      const merged = structuredClone(DEFAULT_ANCHOR_DEFS)
-      for (const [name, def] of Object.entries(saved)) {
-        if (merged[name]) {
-          if (def.offset)   merged[name].offset   = def.offset
-          if (def.rotation) merged[name].rotation = def.rotation
-          // rotation defaults to [0,0,0] from DEFAULT_ANCHOR_DEFS if not in save
-        }
-      }
-      return merged
-    } catch {
-      return null
-    }
+  /**
+   * Save calibration:
+   *  1. Write to localStorage (persists this session in this browser).
+   *  2. Download calibration.json — place it in public/ and commit to make
+   *     the calibration permanent for all users on all devices.
+   */
+  function saveOffsets() {
+    const data = buildCalibrationData()
+    const json = JSON.stringify(data, null, 2)
+
+    // 1. localStorage — quick session persistence
+    localStorage.setItem(STORAGE_KEY, json)
+
+    // 2. File download
+    const blob = new Blob([json], { type: 'application/json' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = 'calibration.json'
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   function resetOffsets() {

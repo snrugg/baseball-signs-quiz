@@ -10,7 +10,8 @@ const sequencer = inject('sequencer')
 const mode = ref('justSign')  // 'justSign' | 'gameDay'
 
 // ── Game Day settings ─────────────────────────────────────────────────────────
-const gameDaySpeed  = ref(1.0)
+const gameDaySpeed   = ref(1.0)
+const gameDayHold    = ref(0.6)   // seconds to pause at each sign (at 1× speed)
 const sequenceLength = ref(8)
 
 // ── State machine ─────────────────────────────────────────────────────────────
@@ -96,7 +97,7 @@ async function startGameDay() {
   const seq = buildGameDaySequence(currentSign.value, sequenceLength.value)
 
   await sequencer.playSign(seq, {
-    holdTime: 0.6 / gameDaySpeed.value,
+    holdTime: gameDayHold.value / gameDaySpeed.value,
     moveTime: 0.4 / gameDaySpeed.value,
   })
 
@@ -176,6 +177,15 @@ function startQuiz() {
             :disabled="quizState !== 'idle'"
           />
           <span class="setting-value">{{ gameDaySpeed.toFixed(2) }}×</span>
+        </div>
+        <div class="setting-row">
+          <label>Pause</label>
+          <input
+            type="range" min="0" max="1.5" step="0.05"
+            v-model.number="gameDayHold"
+            :disabled="quizState !== 'idle'"
+          />
+          <span class="setting-value">{{ gameDayHold.toFixed(2) }}s</span>
         </div>
         <div class="setting-row">
           <label>Signs</label>

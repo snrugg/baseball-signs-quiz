@@ -9,6 +9,7 @@ const sequencer = inject('sequencer')
 const selectedAnchor = ref(null)
 const spheresVisible = ref(true)
 const animSpeed = ref(1.0)  // playback speed multiplier (1 = normal, 2 = 2× faster)
+const saveStatus = ref('')   // feedback message shown after saving
 
 // Initialize spheres once model is loaded
 watch(
@@ -82,9 +83,12 @@ function resetRotation(name) {
   ik.setHandRotation(0, 0, 0)
 }
 
+let _saveStatusTimer = null
 function save() {
   anchors.saveOffsets()
-  alert('Anchor offsets saved!')
+  saveStatus.value = '↓ Place calibration.json in public/ and redeploy'
+  if (_saveStatusTimer) clearTimeout(_saveStatusTimer)
+  _saveStatusTimer = setTimeout(() => { saveStatus.value = '' }, 6000)
 }
 
 function reset() {
@@ -238,6 +242,7 @@ function testAllAnchors() {
         <button class="btn btn-success" @click="save">Save Offsets</button>
         <button class="btn btn-danger" @click="reset">Reset</button>
       </div>
+      <p v-if="saveStatus" class="save-status">{{ saveStatus }}</p>
     </div>
 
     <!-- Status -->
@@ -505,6 +510,15 @@ function testAllAnchors() {
 .status-ok { color: #44ff66; }
 .status-wait { color: #ffaa44; }
 .status-playing { color: #44aaff; }
+
+.save-status {
+  font-size: 0.72rem;
+  color: #88ffaa;
+  font-family: monospace;
+  margin-top: 6px;
+  opacity: 0.85;
+  line-height: 1.4;
+}
 
 /* Mobile: move panel to bottom */
 @media (max-width: 600px) {

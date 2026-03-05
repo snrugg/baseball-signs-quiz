@@ -169,7 +169,7 @@ export function useScene(canvasRef) {
   function loadModel() {
     const loader = new FBXLoader()
     loader.load(
-      '/models/Idle.fbx',
+      import.meta.env.BASE_URL + 'models/Idle.fbx',
       (fbx) => {
         // Mixamo FBX models can be very large — normalize scale
         // Measure bounding box first

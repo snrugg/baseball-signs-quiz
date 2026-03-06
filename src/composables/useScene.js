@@ -3,7 +3,6 @@ import * as THREE from 'three'
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js'
 import { Sky } from 'three/examples/jsm/objects/Sky.js'
 import {
-  filterRightArmTracks,
   computeModelScale,
   computeGroundOffset,
   computeCenterOffsetX,
@@ -300,16 +299,16 @@ export function useScene(canvasRef) {
           boneMap.value = map
         }
 
-        // Set up animation mixer if the FBX has animations
+        // Set up animation mixer if the FBX has animations.
+        // We keep ALL tracks — including the right arm — so the idle animation
+        // drives the arm naturally when IK is inactive.  The IK solver runs in
+        // onFrame AFTER mixer.update(), so it overrides the animation-driven arm
+        // pose every frame while IK is enabled.  When IK is disabled (after a
+        // sign sequence) the animation simply resumes, giving a natural return to
+        // the idle pose with no freezing.
         if (fbx.animations && fbx.animations.length > 0) {
           mixer = new THREE.AnimationMixer(fbx)
-
-          // Remove right arm tracks from the idle animation so IK has full control.
-          // See sceneUtils.RIGHT_ARM_BONE_PATTERNS for the full list.
-          const clip = fbx.animations[0]
-          clip.tracks = filterRightArmTracks(clip.tracks)
-
-          const action = mixer.clipAction(clip)
+          const action = mixer.clipAction(fbx.animations[0])
           action.play()
         }
 

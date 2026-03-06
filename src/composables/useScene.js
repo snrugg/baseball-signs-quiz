@@ -11,6 +11,7 @@ export function useScene(canvasRef) {
 
   let renderer, scene, camera, animationId
   let mixer = null
+  let resizeObserver = null
   const clock = new THREE.Clock()
 
   // Callbacks other composables can hook into
@@ -144,7 +145,14 @@ export function useScene(canvasRef) {
     scene.add(ground)
 
     resize()
-    window.addEventListener('resize', resize)
+
+    // ResizeObserver fires *after* layout reflows, so it always sees the
+    // settled dimensions — unlike window 'resize' which can fire mid-reflow
+    // during device rotation or browser-chrome show/hide on mobile.
+    resizeObserver = new ResizeObserver(() => resize())
+    resizeObserver.observe(canvas.parentElement)
+
+    document.addEventListener('visibilitychange', onVisibilityChange)
   }
 
   function resize() {
@@ -154,6 +162,7 @@ export function useScene(canvasRef) {
     if (!parent) return
     const w = parent.clientWidth
     const h = parent.clientHeight
+    if (w === 0 || h === 0) return   // guard during unmount / hidden tabs
     renderer.setSize(w, h)
 
     if (window.innerWidth > 600) {
@@ -161,15 +170,26 @@ export function useScene(canvasRef) {
       // setViewOffset renders as if the full virtual canvas is (w + panelW) wide,
       // but shows only the left w pixels — centering the 3D scene in the
       // visible (non-panel) area.
+      // NOTE: setViewOffset also sets camera.aspect = (w+panelW)/h internally.
       const panelW = 292 // 280px panel + 12px gap
       camera.setViewOffset(w + panelW, h, panelW, 0, w, h)
-      // setViewOffset internally updates aspect and calls updateProjectionMatrix
     } else {
       // Mobile: the quiz panel is in its own section BELOW the canvas (flex layout),
       // so the canvas already fills only the scene area. No offset needed.
-      camera.clearViewOffset()
+      //
+      // IMPORTANT: Three.js clearViewOffset() resets camera.aspect to 1, which
+      // would make the character appear square on every resize. Instead we
+      // disable the view manually and set the correct aspect ourselves.
+      if (camera.view) camera.view.enabled = false
+      camera.aspect = w / h
       camera.updateProjectionMatrix()
     }
+  }
+
+  function onVisibilityChange() {
+    // On mobile, leaving and returning to the tab can change the viewport
+    // without firing a resize event (e.g. browser chrome appearing).
+    if (document.visibilityState === 'visible') resize()
   }
 
   function loadModel() {
@@ -463,7 +483,8 @@ export function useScene(canvasRef) {
   onBeforeUnmount(() => {
     cancelAnimationFrame(animationId)
     teardownPointerControls()
-    window.removeEventListener('resize', resize)
+    resizeObserver?.disconnect()
+    document.removeEventListener('visibilitychange', onVisibilityChange)
     renderer?.dispose()
   })
 

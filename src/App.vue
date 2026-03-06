@@ -10,7 +10,7 @@ const showCalibration = computed(() =>
   new URLSearchParams(window.location.search).has('calibrate')
 )
 
-const mode = ref('review') // 'review' | 'quiz' | 'calibrate'
+const mode = ref('quiz') // 'review' | 'quiz' | 'calibrate'
 </script>
 
 <template>

@@ -7,12 +7,12 @@ const sequencer = inject('sequencer')
 const signDefs  = inject('signDefs')
 
 // ── Mode ──────────────────────────────────────────────────────────────────────
-const mode = ref('justSign')  // 'justSign' | 'gameDay'
+const mode = ref('gameDay')  // 'justSign' | 'gameDay'
 
 // ── Game Day settings ─────────────────────────────────────────────────────────
 const gameDaySpeed   = ref(1.0)
-const gameDayHold    = ref(0.6)   // seconds to pause at each sign (at 1× speed)
-const sequenceLength = ref(8)
+const gameDayHold    = ref(0.25)  // seconds to pause at each sign (at 1× speed)
+const sequenceLength = ref(10)
 
 // ── State machine ─────────────────────────────────────────────────────────────
 // 'idle' → 'playing' → 'answering' → 'feedback' → 'idle'

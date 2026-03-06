@@ -1,6 +1,7 @@
 import { ref, reactive, shallowRef, onMounted, onBeforeUnmount } from 'vue'
 import * as THREE from 'three'
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js'
+import { Sky } from 'three/examples/jsm/objects/Sky.js'
 import {
   filterRightArmTracks,
   computeModelScale,
@@ -37,75 +38,64 @@ export function useScene(canvasRef) {
     renderer.shadowMap.type = THREE.PCFSoftShadowMap
     renderer.outputColorSpace = THREE.SRGBColorSpace
     renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.2
+    renderer.toneMappingExposure = 1.0
 
-    // Scene — sky gradient background via fullscreen quad
+    // Scene
     scene = new THREE.Scene()
-    // No solid background — the sky shader quad handles it
 
-    // Fullscreen sky gradient rendered as a screen-space quad
-    // using a custom ShaderMaterial so the gradient is always screen-aligned
-    const skyUniforms = {
-      topColor:    { value: new THREE.Color(0x2e8fdd) }, // bright game-day blue
-      bottomColor: { value: new THREE.Color(0xeee0c8) }, // warm light horizon haze
-      midColor:    { value: new THREE.Color(0x87ceee) }, // light sky blue
-      offset:      { value: 0.38 },
-    }
-    const skyMat = new THREE.ShaderMaterial({
-      uniforms: skyUniforms,
-      vertexShader: `
-        varying vec2 vUv;
-        void main() {
-          vUv = uv;
-          gl_Position = vec4(position.xy, 0.9999, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform vec3 topColor;
-        uniform vec3 midColor;
-        uniform vec3 bottomColor;
-        uniform float offset;
-        varying vec2 vUv;
-        void main() {
-          float t = vUv.y;
-          vec3 color;
-          if (t > offset) {
-            color = mix(midColor, topColor, (t - offset) / (1.0 - offset));
-          } else {
-            color = mix(bottomColor, midColor, t / offset);
-          }
-          gl_FragColor = vec4(color, 1.0);
-        }
-      `,
-      depthWrite: false,
-      depthTest: false,
-      side: THREE.DoubleSide,
-    })
-    const skyGeo = new THREE.PlaneGeometry(2, 2)
-    const skyMesh = new THREE.Mesh(skyGeo, skyMat)
-    skyMesh.frustumCulled = false
-    skyMesh.renderOrder = -9999
-    scene.add(skyMesh)
+    // ── Three.js Sky shader — physically-based Rayleigh/Mie atmosphere ─────────
+    const sky = new Sky()
+    sky.scale.setScalar(450)
+    scene.add(sky)
 
-    // Camera — will be positioned after model loads
-    camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100)
+    // Sun direction: phi=60° from zenith (≈30° elevation), theta=135° azimuth
+    const sunDir = new THREE.Vector3()
+    const phi   = THREE.MathUtils.degToRad(60)   // from vertical (zenith)
+    const theta = THREE.MathUtils.degToRad(135)  // horizontal azimuth
+    sunDir.setFromSphericalCoords(1, phi, theta)  // ≈ (0.612, 0.5, −0.612)
+
+    const skyUni = sky.material.uniforms
+    skyUni['turbidity'].value       = 1.5   // atmospheric haze; lower = crisper blue
+    skyUni['rayleigh'].value        = 0.7   // blue-sky scattering; lower = deeper, less pale
+    skyUni['mieCoefficient'].value  = 0.005 // aerosol forward-scatter intensity
+    skyUni['mieDirectionalG'].value = 0.85  // sun-glow directionality
+    skyUni['sunPosition'].value.copy(sunDir)
+
+    // ── IBL — render the sky into a cube map → PMREM environment texture ───────
+    // PBR materials (MeshStandardMaterial) use scene.environment for reflections
+    // and ambient colour, giving grass/dirt/skin physically plausible shading.
+    const pmremGenerator = new THREE.PMREMGenerator(renderer)
+    const cubeRenderTarget = new THREE.WebGLCubeRenderTarget(256)
+    const cubeCamera = new THREE.CubeCamera(0.1, 1000, cubeRenderTarget)
+    scene.add(cubeCamera)
+    cubeCamera.update(renderer, scene)
+    scene.environment = pmremGenerator.fromCubemap(cubeRenderTarget.texture).texture
+    pmremGenerator.dispose()
+    scene.remove(cubeCamera)
+    cubeRenderTarget.dispose()
+
+    // Camera — far must be larger than sky mesh radius (scale 450 → ±225 units)
+    camera = new THREE.PerspectiveCamera(40, 1, 0.1, 2000)
     camera.position.set(0, 1.2, 3)
     camera.lookAt(0, 1, 0)
 
-    // Lighting — golden afternoon game (roughly 3 pm sun from the side)
+    // ── Lighting — golden afternoon game (sun direction matches Sky shader) ─────
     const ambient = new THREE.AmbientLight(0xfff8e7, 1.2)
     scene.add(ambient)
 
-    const sun = new THREE.DirectionalLight(0xffdd88, 2.8)  // warm golden sun
-    sun.position.set(5, 6, 2)                               // side-angled, not overhead
+    // Main sun — position matches Sky shader sunDir so cast shadows line up
+    const sun = new THREE.DirectionalLight(0xffdd88, 2.8)
+    sun.position.copy(sunDir).multiplyScalar(10)
     sun.castShadow = true
-    sun.shadow.mapSize.set(1024, 1024)
-    sun.shadow.camera.near = 0.1
-    sun.shadow.camera.far = 20
-    sun.shadow.camera.left = -4
-    sun.shadow.camera.right = 4
-    sun.shadow.camera.top = 4
-    sun.shadow.camera.bottom = -4
+    sun.shadow.mapSize.set(2048, 2048)          // 2× resolution for crisp shadows
+    sun.shadow.camera.near   = 0.1
+    sun.shadow.camera.far    = 20
+    sun.shadow.camera.left   = -2.5             // tight frustum centred on subject
+    sun.shadow.camera.right  =  2.5
+    sun.shadow.camera.top    =  2.5
+    sun.shadow.camera.bottom = -2.5
+    sun.shadow.bias          = -0.0005          // eliminate shadow acne
+    sun.shadow.radius        = 3                // PCF softening radius
     scene.add(sun)
 
     // Front fill — keeps hands and face readable toward camera
@@ -113,7 +103,7 @@ export function useScene(canvasRef) {
     frontFill.position.set(0, 1.5, 5)
     scene.add(frontFill)
 
-    const fill = new THREE.DirectionalLight(0x5bb8f5, 0.7) // sky-colored fill
+    const fill = new THREE.DirectionalLight(0x5bb8f5, 0.7) // sky-tinted fill
     fill.position.set(-2, 3, 2)
     scene.add(fill)
 
@@ -161,9 +151,27 @@ export function useScene(canvasRef) {
     dirtTex.wrapS = THREE.RepeatWrapping
     dirtTex.wrapT = THREE.RepeatWrapping
     dirtTex.repeat.set(3, 3)
+
+    // Radial alpha mask — opaque centre fading to transparent at the perimeter
+    // so the dirt circle blends softly into the surrounding grass.
+    const alphaCanvas = document.createElement('canvas')
+    alphaCanvas.width = 256
+    alphaCanvas.height = 256
+    const aCtx = alphaCanvas.getContext('2d')
+    const radGrad = aCtx.createRadialGradient(128, 128, 90, 128, 128, 128)
+    radGrad.addColorStop(0, 'white')   // fully opaque at centre
+    radGrad.addColorStop(1, 'black')   // fully transparent at perimeter
+    aCtx.fillStyle = radGrad
+    aCtx.fillRect(0, 0, 256, 256)
+    const dirtAlphaTex = new THREE.CanvasTexture(alphaCanvas)
+
     const ground = new THREE.Mesh(
       new THREE.CircleGeometry(2.0, 48),
-      new THREE.MeshStandardMaterial({ map: dirtTex, roughness: 0.95, metalness: 0 })
+      new THREE.MeshStandardMaterial({
+        map: dirtTex, alphaMap: dirtAlphaTex,
+        roughness: 0.95, metalness: 0,
+        transparent: true, depthWrite: false,
+      })
     )
     ground.rotation.x = -Math.PI / 2
     ground.position.y = 0.002  // just above grass to prevent z-fighting

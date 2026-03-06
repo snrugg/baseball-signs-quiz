@@ -1,10 +1,10 @@
 <script setup>
 import { ref, computed, inject, onMounted, onBeforeUnmount } from 'vue'
-import { SIGN_MEANINGS, INDICATOR } from '../data/signs.js'
 
-const anchors  = inject('anchors')
-const ik       = inject('ik')
+const anchors   = inject('anchors')
+const ik        = inject('ik')
 const sequencer = inject('sequencer')
+const signDefs  = inject('signDefs')
 
 // ── Mode ──────────────────────────────────────────────────────────────────────
 const mode = ref('justSign')  // 'justSign' | 'gameDay'
@@ -19,13 +19,14 @@ const sequenceLength = ref(8)
 const quizState = ref('idle')
 
 // ── Current question ──────────────────────────────────────────────────────────
-const currentSign    = ref(null)   // anchor name of the target sign
-const choices        = ref([])     // 4 shuffled answer strings
+// currentSign holds the meaning string (e.g. "Hit & Run") — it IS the answer
+const currentSign    = ref(null)
+const choices        = ref([])
 const selectedChoice = ref(null)
 const wasCorrect     = ref(false)
-const correctAnswer  = computed(() =>
-  currentSign.value ? SIGN_MEANINGS[currentSign.value] : ''
-)
+
+// The correct answer is simply the current sign's meaning string
+const correctAnswer  = computed(() => currentSign.value ?? '')
 
 // ── Score ─────────────────────────────────────────────────────────────────────
 const score = ref({ correct: 0, total: 0 })
@@ -36,20 +37,19 @@ const scoreDisplay = computed(() =>
 )
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const meaningfulSigns = Object.keys(SIGN_MEANINGS)
-const allAnswers      = Object.values(SIGN_MEANINGS)
-
 function shuffle(arr) {
   return [...arr].sort(() => Math.random() - 0.5)
 }
 
 function buildChoices(correctAns) {
-  const wrong = shuffle(allAnswers.filter(a => a !== correctAns)).slice(0, 3)
+  const all   = signDefs.signKeys.value
+  const wrong = shuffle(all.filter(a => a !== correctAns)).slice(0, 3)
   return shuffle([correctAns, ...wrong])
 }
 
 function pickTarget() {
-  return meaningfulSigns[Math.floor(Math.random() * meaningfulSigns.length)]
+  const keys = signDefs.signKeys.value
+  return keys[Math.floor(Math.random() * keys.length)]
 }
 
 function choiceClass(choice) {
@@ -61,11 +61,11 @@ function choiceClass(choice) {
 
 // ── Just the Sign ─────────────────────────────────────────────────────────────
 async function startJustSign() {
-  currentSign.value = pickTarget()
-  choices.value = buildChoices(SIGN_MEANINGS[currentSign.value])
-  quizState.value = 'playing'
+  currentSign.value  = pickTarget()
+  choices.value      = buildChoices(currentSign.value)
+  quizState.value    = 'playing'
 
-  await sequencer.playSign([currentSign.value], {
+  await sequencer.playSign(signDefs.getSignAnchors(currentSign.value), {
     holdTime: 1.2,
     moveTime: 0.5,
   })
@@ -74,25 +74,30 @@ async function startJustSign() {
 }
 
 // ── Game Day ──────────────────────────────────────────────────────────────────
-function buildGameDaySequence(target, N) {
-  const allAnchors = anchors.anchorNames.value
-  // Decoy pool: everything except the indicator and the target (target appears only once)
-  const decoyPool = allAnchors.filter(a => a !== INDICATOR && a !== target)
+function buildGameDaySequence(meaning, N) {
+  const allAnchors      = anchors.anchorNames.value
+  const signAnchors     = signDefs.getSignAnchors(meaning)     // e.g. ['leftArm'] or ['leftEar','nose']
+  const indicatorAnchor = signDefs.indicator.value
+  const decoyPool       = allAnchors.filter(a =>
+    a !== indicatorAnchor && !signAnchors.includes(a)
+  )
 
-  // Indicator position: not first, not last two (need room for target after it)
-  const indicatorPos = 1 + Math.floor(Math.random() * (N - 2))
+  // Ensure room for: 1+ decoy before indicator + indicator + all sign anchors + 1+ decoy after
+  const maxIndicatorPos = N - signAnchors.length - 1
+  const indicatorPos    = 1 + Math.floor(Math.random() * Math.max(1, maxIndicatorPos - 1))
 
   return Array.from({ length: N }, (_, i) => {
-    if (i === indicatorPos)     return INDICATOR
-    if (i === indicatorPos + 1) return target
+    if (i === indicatorPos) return indicatorAnchor
+    const signOffset = i - indicatorPos - 1
+    if (signOffset >= 0 && signOffset < signAnchors.length) return signAnchors[signOffset]
     return decoyPool[Math.floor(Math.random() * decoyPool.length)]
   })
 }
 
 async function startGameDay() {
   currentSign.value = pickTarget()
-  choices.value = buildChoices(SIGN_MEANINGS[currentSign.value])
-  quizState.value = 'playing'
+  choices.value     = buildChoices(currentSign.value)
+  quizState.value   = 'playing'
 
   const seq = buildGameDaySequence(currentSign.value, sequenceLength.value)
 
@@ -178,7 +183,7 @@ onBeforeUnmount(() => window.removeEventListener('resize', checkMobile))
     <transition name="slide-fade">
       <div v-if="mode === 'gameDay'" class="settings-block">
         <div class="indicator-note">
-          Indicator: <strong>{{ anchors.ANCHOR_LABELS[INDICATOR] }}</strong>
+          Indicator: <strong>{{ anchors.ANCHOR_LABELS[signDefs.indicator.value] }}</strong>
         </div>
         <div class="setting-row">
           <label>Speed</label>
@@ -217,7 +222,7 @@ onBeforeUnmount(() => window.removeEventListener('resize', checkMobile))
       </p>
       <p v-else class="hint">
         Watch for the
-        <strong>{{ anchors.ANCHOR_LABELS[INDICATOR] }}</strong>
+        <strong>{{ anchors.ANCHOR_LABELS[signDefs.indicator.value] }}</strong>
         sign, then identify the call that follows it.
       </p>
       <button class="btn-start" @click="startQuiz" :disabled="!ik.ikReady.value">

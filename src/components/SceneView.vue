@@ -4,6 +4,7 @@ import { useScene } from '../composables/useScene.js'
 import { useAnchors, ANCHOR_LABELS } from '../composables/useAnchors.js'
 import { useIK } from '../composables/useIK.js'
 import { useSequencer } from '../composables/useSequencer.js'
+import { useSignDefs } from '../composables/useSignDefs.js'
 
 const canvasRef = ref(null)
 
@@ -70,10 +71,22 @@ const {
   currentSequence,
   playSign,
   moveToAnchor,
+  moveToSequence,
   moveToRest,
   stop,
   initPosition,
 } = useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeftArm, getAnchorRightArm, getModelForward, setTarget, setHandRotation, setLeftArmPose, setPoleOffset, onFrame)
+
+// Initialize sign definitions (async fetch from public/signs.json, falls back to defaults)
+const {
+  signDefs,
+  indicator,
+  signKeys,
+  getSignAnchors,
+  formatSignLabel,
+  loadSignDefs,
+} = useSignDefs()
+loadSignDefs()
 
 // Provide everything to child components
 provide('scene', {
@@ -126,9 +139,18 @@ provide('sequencer', {
   currentSequence,
   playSign,
   moveToAnchor,
+  moveToSequence,
   moveToRest,
   stop,
   initPosition,
+})
+
+provide('signDefs', {
+  signDefs,
+  indicator,
+  signKeys,
+  getSignAnchors,
+  formatSignLabel,
 })
 </script>
 

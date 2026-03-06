@@ -7,7 +7,7 @@ const ik = inject('ik')
 const sequencer = inject('sequencer')
 
 const selectedAnchor = ref(null)
-const spheresVisible = ref(true)
+const spheresVisible = ref(false)
 const animSpeed = ref(1.0)  // playback speed multiplier (1 = normal, 2 = 2× faster)
 const saveStatus = ref('')   // feedback message shown after saving
 
@@ -19,7 +19,7 @@ watch(
       const s = scene.getScene()
       if (s) {
         anchors.createSpheres(s)
-        anchors.setSpheresVisible(true)
+        anchors.setSpheresVisible(spheresVisible.value)
       }
     }
   },

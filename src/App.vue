@@ -1,14 +1,20 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import SceneView from './components/SceneView.vue'
 import CalibrationPanel from './components/CalibrationPanel.vue'
 import QuizPanel from './components/QuizPanel.vue'
+import ReviewPanel from './components/ReviewPanel.vue'
 
-const mode = ref('calibrate') // 'calibrate' | 'quiz'
+/** Calibration tab is only available when ?calibrate appears in the URL */
+const showCalibration = computed(() =>
+  new URLSearchParams(window.location.search).has('calibrate')
+)
+
+const mode = ref('review') // 'review' | 'quiz' | 'calibrate'
 </script>
 
 <template>
-  <div class="app-layout" :class="{ 'quiz-active': mode === 'quiz' }">
+  <div class="app-layout" :class="{ 'panel-active': mode === 'quiz' || mode === 'review' }">
 
     <!-- Scene wrapper: flex-grows to fill available space on mobile -->
     <div class="scene-wrapper">
@@ -17,10 +23,10 @@ const mode = ref('calibrate') // 'calibrate' | 'quiz'
         <div class="mode-tabs">
           <button
             class="mode-tab"
-            :class="{ active: mode === 'calibrate' }"
-            @click="mode = 'calibrate'"
+            :class="{ active: mode === 'review' }"
+            @click="mode = 'review'"
           >
-            Calibrate
+            Review
           </button>
           <button
             class="mode-tab"
@@ -29,19 +35,30 @@ const mode = ref('calibrate') // 'calibrate' | 'quiz'
           >
             Quiz
           </button>
+          <button
+            v-if="showCalibration"
+            class="mode-tab"
+            :class="{ active: mode === 'calibrate' }"
+            @click="mode = 'calibrate'"
+          >
+            Calibrate
+          </button>
         </div>
 
-        <!-- Calibration mode -->
-        <CalibrationPanel v-if="mode === 'calibrate'" />
-
-        <!-- Quiz mode — component stays here for provide/inject;
+        <!-- Review mode — component stays here for provide/inject;
              on mobile it teleports its DOM to #quiz-portal below -->
+        <ReviewPanel v-if="mode === 'review'" />
+
+        <!-- Quiz mode — same teleport pattern -->
         <QuizPanel v-if="mode === 'quiz'" />
+
+        <!-- Calibration mode — only mounted when ?calibrate is in the URL -->
+        <CalibrationPanel v-if="mode === 'calibrate' && showCalibration" />
       </SceneView>
     </div>
 
-    <!-- Mobile quiz portal: quiz panel teleports here on small screens,
-         giving it its own non-overlapping space below the canvas. -->
+    <!-- Mobile portal: panels teleport here on small screens,
+         giving them their own non-overlapping space below the canvas. -->
     <div id="quiz-portal"></div>
 
   </div>
@@ -60,21 +77,21 @@ const mode = ref('calibrate') // 'calibrate' | 'quiz'
   position: relative;
 }
 
-/* ── Mobile: proper split layout — scene on top, quiz below ── */
+/* ── Mobile: proper split layout — scene on top, panel below ── */
 @media (max-width: 600px) {
-  .app-layout.quiz-active {
+  .app-layout.panel-active {
     display: flex;
     flex-direction: column;
   }
 
-  /* scene-wrapper fills remaining height after quiz portal */
-  .app-layout.quiz-active .scene-wrapper {
+  /* scene-wrapper fills remaining height after the panel portal */
+  .app-layout.panel-active .scene-wrapper {
     flex: 1 1 0;
     min-height: 0;
     height: auto; /* let flexbox drive the height */
   }
 
-  /* quiz-portal claims 55% of the screen */
+  /* portal claims 55% of the screen */
   #quiz-portal {
     flex: 0 0 55%;
     overflow: hidden;

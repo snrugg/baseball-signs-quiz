@@ -287,6 +287,106 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
   }
 
   /**
+   * Move to a sequence of anchors and stay at the final one.
+   * Used by the Review panel (List + Flashcard modes).
+   *
+   * 1 anchor  → delegates to moveToAnchor (stays locked, no return-to-rest)
+   * 2+ anchors → plays through each with a 0.7 s hold at intermediate anchors,
+   *              then stays at the last anchor (stickyAnchor set, no returnToRest)
+   *
+   * Arc, hand rotation, left-arm, and right-arm tweens run per step.
+   */
+  function moveToSequence(anchorNames, moveTime = 0.5) {
+    if (!anchorNames || anchorNames.length === 0) return
+    if (anchorNames.length === 1) {
+      moveToAnchor(anchorNames[0], moveTime)
+      return
+    }
+
+    stopCurrent()
+    isPlaying.value = true
+
+    return new Promise((resolve) => {
+      let cancelled = false
+      _cancelCurrent = () => { cancelled = true }
+
+      function finish() {
+        if (cancelled) return
+        isPlaying.value = false
+        isAnimating = false
+        resolve()
+      }
+
+      function stepTo(index) {
+        if (cancelled) return
+        const name   = anchorNames[index]
+        const isLast = index === anchorNames.length - 1
+
+        stickyAnchor = name
+        isAnimating  = true
+
+        const pos = getAnchorWorldPos(name)
+        const tx  = pos?.x ?? animatedPos.x
+        const ty  = pos?.y ?? animatedPos.y
+        const tz  = pos?.z ?? animatedPos.z
+
+        const [targetRx, targetRy, targetRz] = getAnchorRotation(name)
+        const [targetFwd, targetRaise]       = getAnchorLeftArm(name)
+        const [targetOut, targetUp]          = getAnchorRightArm(name)
+
+        const arc  = arcAmount(animatedPos.x, animatedPos.z, tx, tz)
+        const ref  = {}
+        const tween = gsap.to(animatedPos, {
+          duration: moveTime,
+          x: tx, y: ty, z: tz,
+          ease: 'power2.inOut',
+          onUpdate: makePositionUpdate(ref, arc),
+          onComplete: () => {
+            if (cancelled) return
+            isAnimating = false
+            if (isLast) {
+              // Stay at final anchor — hand locked to body part; resolve promise
+              finish()
+            } else {
+              // Hold briefly at intermediate anchors then continue
+              _currentDelay = gsap.delayedCall(0.7, () => {
+                if (cancelled) return
+                isAnimating = true
+                stepTo(index + 1)
+              })
+            }
+          },
+        })
+        ref.tween  = tween
+        _currentTween = tween
+
+        gsap.to(animatedRot, {
+          duration: moveTime,
+          rx: targetRx, ry: targetRy, rz: targetRz,
+          ease: 'power2.inOut',
+          onUpdate: () => { setHandRotation(animatedRot.rx, animatedRot.ry, animatedRot.rz) },
+        })
+
+        gsap.to(animatedLeftArm, {
+          duration: moveTime,
+          forward: targetFwd, raise: targetRaise,
+          ease: 'power2.inOut',
+          onUpdate: () => { setLeftArmPose(animatedLeftArm.forward, animatedLeftArm.raise) },
+        })
+
+        gsap.to(animatedRightArm, {
+          duration: moveTime,
+          out: targetOut, up: targetUp,
+          ease: 'power2.inOut',
+          onUpdate: () => { setPoleOffset(animatedRightArm.out, animatedRightArm.up) },
+        })
+      }
+
+      stepTo(0)
+    })
+  }
+
+  /**
    * Move to a single anchor (for calibration preview).
    * Tweens both position and rotation. After the animation completes,
    * the hand stays locked to the anchor.
@@ -425,6 +525,7 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
     currentSequence,
     playSign,
     moveToAnchor,
+    moveToSequence,
     moveToRest,
     stop,
     initPosition,

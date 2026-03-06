@@ -1,0 +1,14 @@
+{
+  "indicator": "billOfCap",
+  "signs": {
+    "Hit & Run":                  ["leftArm"],
+    "Straight Steal":             ["frontOfLeg"],
+    "Delayed Steal":              ["backOfLeg"],
+    "Sacrifice Bunt 1st Base":    ["nose", "leftEar"],
+    "Bunt for Base Hit 1st Base": ["topOfHead", "leftEar"],
+    "Sacrifice Bunt 3rd Base":    ["nose", "rightEar"],
+    "Bunt for Base Hit 3rd Base": ["topOfHead", "rightEar"],
+    "Squeeze Bunt":               ["chin"],
+    "Take":                       ["frontOfHand"]
+  }
+}

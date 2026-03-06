@@ -1,6 +1,15 @@
 import { ref, reactive, shallowRef, onMounted, onBeforeUnmount } from 'vue'
 import * as THREE from 'three'
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js'
+import {
+  filterRightArmTracks,
+  computeModelScale,
+  computeGroundOffset,
+  computeCenterOffsetX,
+  computeDragRotation,
+  computeDragPan,
+  clampPixelRatio,
+} from './sceneUtils.js'
 
 export function useScene(canvasRef) {
   const loading = ref(true)
@@ -23,7 +32,7 @@ export function useScene(canvasRef) {
   function init(canvas) {
     // Renderer
     renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false })
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+    renderer.setPixelRatio(clampPixelRatio(window.devicePixelRatio))
     renderer.shadowMap.enabled = true
     renderer.shadowMap.type = THREE.PCFSoftShadowMap
     renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -200,16 +209,14 @@ export function useScene(canvasRef) {
         // Mixamo FBX models can be very large — normalize scale
         // Measure bounding box first
         const box = new THREE.Box3().setFromObject(fbx)
-        const height = box.max.y - box.min.y
         const desiredHeight = 1.8 // ~1.8 units tall
-        const scaleFactor = desiredHeight / height
-        fbx.scale.setScalar(scaleFactor)
+        fbx.scale.setScalar(computeModelScale(box.max.y - box.min.y, desiredHeight))
 
         // Recompute box after scale
         box.setFromObject(fbx)
         const center = box.getCenter(new THREE.Vector3())
-        fbx.position.y -= box.min.y // feet on ground
-        fbx.position.x -= center.x // center horizontally
+        fbx.position.y += computeGroundOffset(box.min.y) // feet on ground
+        fbx.position.x += computeCenterOffsetX(center.x) // center horizontally
 
         fbx.traverse((child) => {
           if (child.isMesh) {
@@ -251,18 +258,9 @@ export function useScene(canvasRef) {
           mixer = new THREE.AnimationMixer(fbx)
 
           // Remove right arm tracks from the idle animation so IK has full control.
-          // We filter out any tracks that target the right shoulder/arm/forearm/hand bones.
+          // See sceneUtils.RIGHT_ARM_BONE_PATTERNS for the full list.
           const clip = fbx.animations[0]
-          const rightArmBonePatterns = [
-            'RightShoulder', 'RightArm', 'RightForeArm', 'RightHand',
-            'RightHandThumb', 'RightHandIndex', 'RightHandMiddle',
-            'RightHandRing', 'RightHandPinky',
-          ]
-          clip.tracks = clip.tracks.filter((track) => {
-            // Track names look like "boneName.quaternion" or "boneName.position"
-            const boneName = track.name.split('.')[0]
-            return !rightArmBonePatterns.some((pattern) => boneName.includes(pattern))
-          })
+          clip.tracks = filterRightArmTracks(clip.tracks)
 
           const action = mixer.clipAction(clip)
           action.play()
@@ -411,11 +409,11 @@ export function useScene(canvasRef) {
 
     if (dragButton === 0) {
       // Left-drag / single-touch: rotate
-      modelRotation.value = dragStartRotation + (dx / w) * Math.PI * 2
+      modelRotation.value = computeDragRotation(dragStartRotation, dx, w)
       applyModelTransform()
     } else {
       // Right-drag / two-finger: move left/right
-      modelOffsetX.value = dragStartRotation + (dx / w) * 3
+      modelOffsetX.value = computeDragPan(dragStartRotation, dx, w)
       applyModelTransform()
     }
   }

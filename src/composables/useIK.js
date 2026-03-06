@@ -357,10 +357,48 @@ export function useIK(model, skeleton, boneMap, onFrame) {
     }
   }
 
+  // Whether IK is actively solving.
+  // Disabled after returning to rest so the idle animation drives the arm
+  // naturally; re-enabled (with a target snap) when a new sign begins.
+  let ikEnabled = true
+
+  /**
+   * Enable or disable the IK solver.
+   * When re-enabling, call snapTargetToHand() first so the target starts
+   * at the actual current hand position and there is no visible jump.
+   */
+  function setIKEnabled(val) {
+    ikEnabled = val
+  }
+
+  /**
+   * Copy the current hand bone world position into ikTarget.
+   * Call this immediately before setIKEnabled(true) so the solver
+   * starts from wherever the idle animation left the hand.
+   */
+  function snapTargetToHand() {
+    if (handBone && model.value) {
+      model.value.updateMatrixWorld(true)
+      handBone.getWorldPosition(ikTarget)
+    }
+  }
+
+  /**
+   * Return the current hand bone world position (for the sequencer to
+   * sync animatedPos when re-activating IK from a rest state).
+   */
+  function getHandWorldPos() {
+    if (!handBone || !model.value) return null
+    model.value.updateMatrixWorld(true)
+    const p = new THREE.Vector3()
+    handBone.getWorldPosition(p)
+    return p
+  }
+
   // Per-frame update
   if (onFrame) {
     onFrame(() => {
-      if (!ikReady.value) return
+      if (!ikReady.value || !ikEnabled) return
       solveTwoBoneIK()
     })
   }
@@ -388,6 +426,9 @@ export function useIK(model, skeleton, boneMap, onFrame) {
     initIK,
     setHandRotation,
     setPoleOffset,
+    setIKEnabled,
+    snapTargetToHand,
+    getHandWorldPos,
     computeAutoHandRotation,
   }
 }

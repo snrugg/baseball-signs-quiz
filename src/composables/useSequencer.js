@@ -11,7 +11,7 @@ import * as THREE from 'three'
  *   → moves the right hand to cap, then chest, then belt in sequence,
  *     applying the calibrated hand rotation at each stop.
  */
-export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeftArm, getAnchorRightArm, getModelForward, setTarget, setHandRotation, setLeftArmPose, setPoleOffset, onFrame) {
+export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeftArm, getAnchorRightArm, getModelForward, setTarget, setHandRotation, setLeftArmPose, setPoleOffset, onFrame, setIKEnabled, getHandWorldPos) {
   const isPlaying = ref(false)
   const currentStep = ref(-1)
   const currentSequence = ref([])
@@ -41,6 +41,30 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
 
   // Start position: where the hand rests between signs
   const restPosition = new THREE.Vector3(0.3, 1.0, 0.2)
+
+  /**
+   * Re-enable IK and sync animatedPos to the hand's current world position
+   * (wherever the idle animation left it) so the tween starts with no jump.
+   */
+  function activateIK() {
+    if (getHandWorldPos) {
+      const p = getHandWorldPos()
+      if (p) {
+        animatedPos.x = p.x
+        animatedPos.y = p.y
+        animatedPos.z = p.z
+        setTarget(p)
+      }
+    }
+    if (setIKEnabled) setIKEnabled(true)
+  }
+
+  /**
+   * Disable IK so the idle animation can drive the arm naturally at rest.
+   */
+  function deactivateIK() {
+    if (setIKEnabled) setIKEnabled(false)
+  }
 
   // ── Arc helper ─────────────────────────────────────────────────────────────
   /**
@@ -136,6 +160,7 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
     } = options
 
     stopCurrent()
+    activateIK()
 
     currentSequence.value = [...anchorNames]
     currentStep.value = -1
@@ -151,6 +176,7 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
         isAnimating = false
         currentStep.value = -1
         stickyAnchor = null
+        deactivateIK()   // idle animation reclaims the arm
         resolve()
       }
 
@@ -304,6 +330,7 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
     }
 
     stopCurrent()
+    activateIK()
     isPlaying.value = true
 
     return new Promise((resolve) => {
@@ -393,6 +420,7 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
    */
   function moveToAnchor(anchorName, duration = 0.5) {
     stopCurrent()
+    activateIK()
 
     const pos = getAnchorWorldPos(anchorName)
     if (!pos) return
@@ -456,6 +484,7 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
    */
   function moveToRest(duration = 0.5) {
     stopCurrent()
+    activateIK()
     isAnimating = true
 
     const arc  = arcAmount(animatedPos.x, animatedPos.z, restPosition.x, restPosition.z)
@@ -467,6 +496,7 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
       onUpdate: makePositionUpdate(ref, arc),
       onComplete: () => {
         isAnimating = false
+        deactivateIK()   // idle animation reclaims the arm
       },
     })
     ref.tween  = tween

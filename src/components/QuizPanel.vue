@@ -13,6 +13,7 @@ const mode = ref('gameDay')  // 'justSign' | 'gameDay'
 const gameDaySpeed   = ref(1.0)
 const gameDayHold    = ref(0.25)  // seconds to pause at each sign (at 1× speed)
 const sequenceLength = ref(10)
+const settingsOpen   = ref(false) // sliders hidden by default
 
 // ── State machine ─────────────────────────────────────────────────────────────
 // 'idle' → 'playing' → 'answering' → 'feedback' → 'idle'
@@ -35,6 +36,23 @@ const scoreDisplay = computed(() =>
     ? '—'
     : `${score.value.correct} / ${score.value.total}`
 )
+
+// ── Streak ────────────────────────────────────────────────────────────────────
+const STREAK_KEY = 'baseballSigns_bestStreak'
+const streak     = ref(0)
+const bestStreak = ref(parseInt(localStorage.getItem(STREAK_KEY) ?? '0', 10))
+
+function updateStreak(correct) {
+  if (correct) {
+    streak.value++
+    if (streak.value > bestStreak.value) {
+      bestStreak.value = streak.value
+      localStorage.setItem(STREAK_KEY, String(bestStreak.value))
+    }
+  } else {
+    streak.value = 0
+  }
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function shuffle(arr) {
@@ -116,6 +134,7 @@ function selectAnswer(choice) {
   wasCorrect.value = choice === correctAnswer.value
   score.value.total++
   if (wasCorrect.value) score.value.correct++
+  updateStreak(wasCorrect.value)
   quizState.value = 'feedback'
 }
 
@@ -128,12 +147,35 @@ function next() {
 
 function resetScore() {
   score.value = { correct: 0, total: 0 }
+  streak.value = 0
 }
 
 function startQuiz() {
   if (!ik.ikReady.value || quizState.value !== 'idle') return
   if (mode.value === 'justSign') startJustSign()
   else startGameDay()
+}
+
+// ── Keyboard shortcuts ────────────────────────────────────────────────────────
+// Space  : play (idle) or next (feedback)
+// 1–4    : select answer choice (answering state)
+function onKeyDown(e) {
+  // Don't intercept when an input/textarea is focused
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
+
+  if (e.code === 'Space') {
+    e.preventDefault()
+    if (quizState.value === 'idle') startQuiz()
+    else if (quizState.value === 'feedback') next()
+    return
+  }
+
+  if (quizState.value === 'answering') {
+    const idx = parseInt(e.key, 10) - 1
+    if (idx >= 0 && idx < choices.value.length) {
+      selectAnswer(choices.value[idx])
+    }
+  }
 }
 
 // ── Mobile teleport ───────────────────────────────────────────
@@ -143,20 +185,36 @@ function startQuiz() {
 // conflicts caused by the canvas's touch-action:none.
 const isMobile = ref(false)
 function checkMobile() { isMobile.value = window.innerWidth <= 600 }
-onMounted(() => { checkMobile(); window.addEventListener('resize', checkMobile) })
-onBeforeUnmount(() => window.removeEventListener('resize', checkMobile))
+onMounted(() => {
+  checkMobile()
+  window.addEventListener('resize', checkMobile)
+  window.addEventListener('keydown', onKeyDown)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', checkMobile)
+  window.removeEventListener('keydown', onKeyDown)
+})
 </script>
 
 <template>
   <Teleport to="#quiz-portal" :disabled="!isMobile">
   <div class="quiz-panel">
 
-    <!-- Header with score -->
+    <!-- Header with score + streak -->
     <div class="panel-header">
       <h2>⚾ Sign Quiz</h2>
-      <button class="score-badge" @click="resetScore" title="Click to reset score">
-        {{ scoreDisplay }}
-      </button>
+      <div class="header-badges">
+        <span
+          class="streak-badge"
+          :class="{ 'streak-hot': streak >= 3 }"
+          title="Current streak · Best streak"
+        >
+          🔥 {{ streak }} · 🏆 {{ bestStreak }}
+        </span>
+        <button class="score-badge" @click="resetScore" title="Click to reset score">
+          {{ scoreDisplay }}
+        </button>
+      </div>
     </div>
 
     <!-- Mode selector -->
@@ -179,39 +237,53 @@ onBeforeUnmount(() => window.removeEventListener('resize', checkMobile))
       </button>
     </div>
 
-    <!-- Game Day settings -->
+    <!-- Game Day: indicator note (always visible) + collapsible sliders -->
     <transition name="slide-fade">
-      <div v-if="mode === 'gameDay'" class="settings-block">
+      <div v-if="mode === 'gameDay'" class="gameday-controls">
         <div class="indicator-note">
           Indicator: <strong>{{ anchors.ANCHOR_LABELS[signDefs.indicator.value] }}</strong>
         </div>
-        <div class="setting-row">
-          <label>Speed</label>
-          <input
-            type="range" min="0.25" max="4" step="0.25"
-            v-model.number="gameDaySpeed"
-            :disabled="quizState !== 'idle'"
-          />
-          <span class="setting-value">{{ gameDaySpeed.toFixed(2) }}×</span>
-        </div>
-        <div class="setting-row">
-          <label>Pause</label>
-          <input
-            type="range" min="0" max="1.5" step="0.05"
-            v-model.number="gameDayHold"
-            :disabled="quizState !== 'idle'"
-          />
-          <span class="setting-value">{{ gameDayHold.toFixed(2) }}s</span>
-        </div>
-        <div class="setting-row">
-          <label>Signs</label>
-          <input
-            type="range" min="5" max="15" step="1"
-            v-model.number="sequenceLength"
-            :disabled="quizState !== 'idle'"
-          />
-          <span class="setting-value">{{ sequenceLength }}</span>
-        </div>
+        <button
+          class="settings-toggle"
+          :disabled="quizState !== 'idle'"
+          @click="settingsOpen = !settingsOpen"
+          :aria-expanded="settingsOpen"
+        >
+          <span>Settings</span>
+          <span class="chevron" :class="{ open: settingsOpen }">▾</span>
+        </button>
+
+        <transition name="slide-fade">
+          <div v-if="settingsOpen" class="settings-block">
+            <div class="setting-row">
+              <label>Speed</label>
+              <input
+                type="range" min="0.25" max="4" step="0.25"
+                v-model.number="gameDaySpeed"
+                :disabled="quizState !== 'idle'"
+              />
+              <span class="setting-value">{{ gameDaySpeed.toFixed(2) }}×</span>
+            </div>
+            <div class="setting-row">
+              <label>Pause</label>
+              <input
+                type="range" min="0" max="1.5" step="0.05"
+                v-model.number="gameDayHold"
+                :disabled="quizState !== 'idle'"
+              />
+              <span class="setting-value">{{ gameDayHold.toFixed(2) }}s</span>
+            </div>
+            <div class="setting-row">
+              <label>Signs</label>
+              <input
+                type="range" min="5" max="15" step="1"
+                v-model.number="sequenceLength"
+                :disabled="quizState !== 'idle'"
+              />
+              <span class="setting-value">{{ sequenceLength }}</span>
+            </div>
+          </div>
+        </transition>
       </div>
     </transition>
 
@@ -228,6 +300,9 @@ onBeforeUnmount(() => window.removeEventListener('resize', checkMobile))
       <button class="btn-start" @click="startQuiz" :disabled="!ik.ikReady.value">
         {{ ik.ikReady.value ? '▶  Play' : 'Loading...' }}
       </button>
+      <div class="key-hint-row">
+        <span class="key-chip">Space</span> to play
+      </div>
     </div>
 
     <!-- Playing: live indicator -->
@@ -249,13 +324,14 @@ onBeforeUnmount(() => window.removeEventListener('resize', checkMobile))
 
       <div class="choices">
         <button
-          v-for="choice in choices"
+          v-for="(choice, idx) in choices"
           :key="choice"
           class="choice-btn"
           :class="choiceClass(choice)"
           :disabled="quizState === 'feedback'"
           @click="selectAnswer(choice)"
         >
+          <span class="choice-key">{{ idx + 1 }}</span>
           {{ choice }}
         </button>
       </div>
@@ -264,9 +340,16 @@ onBeforeUnmount(() => window.removeEventListener('resize', checkMobile))
       <transition name="pop">
         <div v-if="quizState === 'feedback'" class="feedback-section">
           <div class="result-banner" :class="wasCorrect ? 'result-correct' : 'result-wrong'">
-            {{ wasCorrect ? '✓ Correct!' : `✗ It was: ${correctAnswer}` }}
+            <span v-if="wasCorrect">
+              ✓ Correct!
+              <span v-if="streak >= 3" class="streak-bonus">🔥 {{ streak }} streak</span>
+            </span>
+            <span v-else>✗ It was: {{ correctAnswer }}</span>
           </div>
-          <button class="btn-next" @click="next">Next →</button>
+          <button class="btn-next" @click="next">
+            Next →
+            <span class="key-chip key-chip-inline">Space</span>
+          </button>
         </div>
       </transition>
     </div>
@@ -307,6 +390,30 @@ onBeforeUnmount(() => window.removeEventListener('resize', checkMobile))
   color: #fff;
 }
 
+.header-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.streak-badge {
+  font-size: 0.72rem;
+  font-family: monospace;
+  color: #888;
+  padding: 3px 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+
+.streak-badge.streak-hot {
+  color: #ffaa44;
+  border-color: rgba(255, 150, 50, 0.35);
+  background: rgba(255, 140, 30, 0.12);
+}
+
 .score-badge {
   background: rgba(255, 255, 255, 0.07);
   border: 1px solid rgba(255, 255, 255, 0.14);
@@ -329,7 +436,7 @@ onBeforeUnmount(() => window.removeEventListener('resize', checkMobile))
 .mode-tabs {
   display: flex;
   gap: 4px;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .mode-tab {
@@ -360,24 +467,58 @@ onBeforeUnmount(() => window.removeEventListener('resize', checkMobile))
   cursor: default;
 }
 
-/* ── Game Day settings ─────────────────────── */
-.settings-block {
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 8px;
-  padding: 10px 12px;
-  margin-bottom: 12px;
+/* ── Game Day controls ─────────────────────── */
+.gameday-controls {
+  margin-bottom: 10px;
 }
 
 .indicator-note {
   font-size: 0.75rem;
-  color: #999;
-  margin-bottom: 8px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  color: #888;
+  margin-bottom: 6px;
 }
 
 .indicator-note strong {
   color: #ffcc44;
+}
+
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 5px 10px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: #888;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.settings-toggle:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: #bbb;
+}
+
+.settings-toggle:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.chevron {
+  display: inline-block;
+  font-size: 0.8rem;
+  transition: transform 0.2s ease;
+}
+
+.chevron.open {
+  transform: rotate(180deg);
+}
+
+.settings-block {
+  padding: 8px 0 2px;
 }
 
 .setting-row {
@@ -412,7 +553,7 @@ onBeforeUnmount(() => window.removeEventListener('resize', checkMobile))
 .start-section {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   align-items: stretch;
 }
 
@@ -451,6 +592,34 @@ onBeforeUnmount(() => window.removeEventListener('resize', checkMobile))
   background: #2a2a4a;
   color: #555;
   cursor: default;
+}
+
+/* ── Keyboard hint ─────────────────────────── */
+.key-hint-row {
+  text-align: center;
+  font-size: 0.7rem;
+  color: #555;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.key-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.07);
+  font-family: monospace;
+  font-size: 0.68rem;
+  color: #777;
+}
+
+.key-chip-inline {
+  margin-left: 6px;
+  opacity: 0.6;
 }
 
 /* ── Playing ───────────────────────────────── */
@@ -513,7 +682,7 @@ onBeforeUnmount(() => window.removeEventListener('resize', checkMobile))
 
 .choice-btn {
   width: 100%;
-  padding: 11px 16px;
+  padding: 10px 12px;
   border-radius: 9px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.06);
@@ -522,6 +691,9 @@ onBeforeUnmount(() => window.removeEventListener('resize', checkMobile))
   font-weight: 500;
   cursor: pointer;
   text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   transition: all 0.12s;
 }
 
@@ -549,6 +721,28 @@ onBeforeUnmount(() => window.removeEventListener('resize', checkMobile))
   opacity: 0.3;
 }
 
+/* Number badge on each choice */
+.choice-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 0.65rem;
+  font-family: monospace;
+  color: #777;
+  flex-shrink: 0;
+}
+
+.choice-btn.correct .choice-key,
+.choice-btn.wrong .choice-key,
+.choice-btn.dimmed .choice-key {
+  display: none;
+}
+
 /* ── Feedback ──────────────────────────────── */
 .feedback-section {
   display: flex;
@@ -562,6 +756,16 @@ onBeforeUnmount(() => window.removeEventListener('resize', checkMobile))
   font-weight: 600;
   font-size: 0.9rem;
   text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.streak-bonus {
+  font-size: 0.8rem;
+  font-weight: 500;
+  opacity: 0.85;
 }
 
 .result-correct {
@@ -587,6 +791,9 @@ onBeforeUnmount(() => window.removeEventListener('resize', checkMobile))
   font-weight: 500;
   cursor: pointer;
   transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn-next:hover {

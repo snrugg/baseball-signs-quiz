@@ -47,13 +47,36 @@ function nextCard() {
   revealed.value  = false
 }
 
+// ── Keyboard shortcuts (flashcard mode only) ────────────────────────────────
+// ←/→  : prev / next card
+// Space : show / hide sign
+function onKeyDown(e) {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
+  if (subMode.value !== 'flashcard') return
+
+  if (e.key === 'ArrowLeft')  { e.preventDefault(); prevCard(); return }
+  if (e.key === 'ArrowRight') { e.preventDefault(); nextCard(); return }
+  if (e.code === 'Space') {
+    e.preventDefault()
+    if (revealed.value) hideSign()
+    else showSign()
+  }
+}
+
 // ── Mobile teleport ────────────────────────────────────────────────────────
 // On narrow screens the review panel teleports into #quiz-portal (below the
 // canvas in App.vue's flex layout) so it never overlaps the Three.js canvas.
 const isMobile = ref(false)
 function checkMobile() { isMobile.value = window.innerWidth <= 600 }
-onMounted(() => { checkMobile(); window.addEventListener('resize', checkMobile) })
-onBeforeUnmount(() => window.removeEventListener('resize', checkMobile))
+onMounted(() => {
+  checkMobile()
+  window.addEventListener('resize', checkMobile)
+  window.addEventListener('keydown', onKeyDown)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', checkMobile)
+  window.removeEventListener('keydown', onKeyDown)
+})
 </script>
 
 <template>
@@ -123,6 +146,13 @@ onBeforeUnmount(() => window.removeEventListener('resize', checkMobile))
       <div class="nav-row">
         <button class="btn-nav" @click="prevCard">← Prev</button>
         <button class="btn-nav" @click="nextCard">Next →</button>
+      </div>
+      <div class="key-hint-row">
+        <span class="key-chip">←</span>
+        <span class="key-chip">→</span>
+        navigate &nbsp;·&nbsp;
+        <span class="key-chip">Space</span>
+        show/hide
       </div>
     </div>
 
@@ -333,6 +363,29 @@ onBeforeUnmount(() => window.removeEventListener('resize', checkMobile))
   background: rgba(255, 255, 255, 0.12);
   color: #fff;
   border-color: rgba(255, 255, 255, 0.22);
+}
+
+/* ── Keyboard hints ────────────────────────── */
+.key-hint-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 0.68rem;
+  color: #444;
+  flex-wrap: wrap;
+}
+
+.key-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  font-family: monospace;
+  font-size: 0.68rem;
+  color: #666;
 }
 
 /* ── Transition ────────────────────────────── */

@@ -53,6 +53,9 @@ const {
   getTarget,
   setHandRotation,
   setPoleOffset,
+  setIKEnabled,
+  snapTargetToHand,
+  getHandWorldPos,
   computeAutoHandRotation,
 } = useIK(model, skeleton, boneMap, onFrame)
 
@@ -75,7 +78,7 @@ const {
   moveToRest,
   stop,
   initPosition,
-} = useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeftArm, getAnchorRightArm, getModelForward, setTarget, setHandRotation, setLeftArmPose, setPoleOffset, onFrame)
+} = useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeftArm, getAnchorRightArm, getModelForward, setTarget, setHandRotation, setLeftArmPose, setPoleOffset, onFrame, setIKEnabled, getHandWorldPos)
 
 // Initialize sign definitions (async fetch from public/signs.json, falls back to defaults)
 const {

@@ -247,15 +247,116 @@ export function useScene(canvasRef) {
     if (document.visibilityState === 'visible') resize()
   }
 
+  /**
+   * Recolour a texture atlas in-place to dress the character in a
+   * yellow (#F0B800) and black uniform.
+   *
+   * Strategy (per-pixel classification):
+   *  • Skin tones  — reddish-warm (R clearly dominant) → keep unchanged
+   *  • Light greys / whites (accent stripes, shoes) → team yellow #F0B800
+   *  • Dark / black areas → keep unchanged
+   *
+   * The FBX loader fires its success callback before the HTMLImageElement
+   * onload events fire, so the image may not be decoded yet.  We handle
+   * both cases: process immediately when the image is ready, otherwise
+   * defer to the image's load event.  Either way we mutate tex.image in
+   * place so we don't need to replace mat.map on every material.
+   */
+  function applyUniformRecolor(tex) {
+    function doRecolor(img) {
+      const w = img.naturalWidth || img.width || 0
+      const h = img.naturalHeight || img.height || 0
+      if (!w || !h) return
+
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      const ctx = canvas.getContext('2d')
+
+      try {
+        ctx.drawImage(img, 0, 0, w, h)
+        const imageData = ctx.getImageData(0, 0, w, h)
+        const data = imageData.data
+
+        for (let i = 0; i < data.length; i += 4) {
+          if (data[i + 3] < 128) continue          // skip transparent
+          const r = data[i], g = data[i + 1], b = data[i + 2]
+
+          // Skin: warm reddish – R is clearly the dominant channel
+          if (r > 60 && (r - Math.max(g, b)) >= 12) continue
+
+          // Neutral grey / white → team yellow #F0B800
+          const lum = (r * 299 + g * 587 + b * 114) / 1000
+          const sat = Math.max(r, g, b) - Math.min(r, g, b)
+          if (lum > 90 && sat < 55) {
+            data[i]     = 240   // R
+            data[i + 1] = 184   // G
+            data[i + 2] = 0     // B
+          }
+          // Dark / black areas stay unchanged
+        }
+
+        ctx.putImageData(imageData, 0, 0)
+        tex.image = canvas
+        tex.needsUpdate = true
+      } catch (e) {
+        console.warn('applyUniformRecolor: could not recolour texture', e)
+      }
+    }
+
+    const img = tex.image
+    if (!img) return
+
+    if (img.complete && img.naturalWidth > 0) {
+      // Image already decoded — process synchronously
+      doRecolor(img)
+    } else {
+      // Image still loading — defer until onload fires
+      img.addEventListener('load', () => doRecolor(img), { once: true })
+    }
+  }
+
   function loadModel() {
-    const loader = new FBXLoader()
+    // Use a LoadingManager so manager.onLoad fires only after the FBX *and*
+    // every texture image it references have all finished loading.  We do the
+    // pixel-recolour pass there, guaranteeing tex.image is non-null.
+    const manager = new THREE.LoadingManager()
+    const loader = new FBXLoader(manager)
+
+    let loadedFbx = null   // stash the parsed FBX for use in manager.onLoad
+    let desiredHeight = 1.8
+
+    manager.onLoad = () => {
+      if (!loadedFbx) return
+
+      // Retexture: recolour uniform to yellow (#F0B800) / black.
+      // All texture HTMLImageElements are guaranteed loaded at this point.
+      const processedTextures = new Set()
+      loadedFbx.traverse((child) => {
+        if (!child.isMesh) return
+        const mats = Array.isArray(child.material) ? child.material : [child.material]
+        mats.forEach((mat) => {
+          if (!mat.map || processedTextures.has(mat.map)) return
+          processedTextures.add(mat.map)
+          applyUniformRecolor(mat.map)
+        })
+      })
+
+      loading.value = false
+    }
+
+    manager.onError = (url) => {
+      console.error('LoadingManager error:', url)
+    }
+
     loader.load(
       import.meta.env.BASE_URL + 'models/Idle.fbx',
       (fbx) => {
+        loadedFbx = fbx
+
         // Mixamo FBX models can be very large — normalize scale
         // Measure bounding box first
         const box = new THREE.Box3().setFromObject(fbx)
-        const desiredHeight = 1.8 // ~1.8 units tall
         fbx.scale.setScalar(computeModelScale(box.max.y - box.min.y, desiredHeight))
 
         // Recompute box after scale
@@ -319,7 +420,7 @@ export function useScene(canvasRef) {
         camera.lookAt(0, modelCenter.y, 0)
         resize() // reapply setViewOffset with updated camera position
 
-        loading.value = false
+        // loading.value = false is set in manager.onLoad, after textures load
       },
       (progress) => {
         // progress callback — could add a progress bar

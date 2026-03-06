@@ -46,10 +46,10 @@ export function useScene(canvasRef) {
     // Fullscreen sky gradient rendered as a screen-space quad
     // using a custom ShaderMaterial so the gradient is always screen-aligned
     const skyUniforms = {
-      topColor:    { value: new THREE.Color(0x3a7bd5) },
-      bottomColor: { value: new THREE.Color(0xc4a56e) }, // warm dirt-horizon blend
-      midColor:    { value: new THREE.Color(0x87CEEB) },
-      offset:      { value: 0.4 },
+      topColor:    { value: new THREE.Color(0x2e8fdd) }, // bright game-day blue
+      bottomColor: { value: new THREE.Color(0xeee0c8) }, // warm light horizon haze
+      midColor:    { value: new THREE.Color(0x87ceee) }, // light sky blue
+      offset:      { value: 0.38 },
     }
     const skyMat = new THREE.ShaderMaterial({
       uniforms: skyUniforms,
@@ -92,66 +92,105 @@ export function useScene(canvasRef) {
     camera.position.set(0, 1.2, 3)
     camera.lookAt(0, 1, 0)
 
-    // Lighting — bright outdoor sunlight
-    const ambient = new THREE.AmbientLight(0xfff8e7, 1.4)
+    // Lighting — golden afternoon game (roughly 3 pm sun from the side)
+    const ambient = new THREE.AmbientLight(0xfff8e7, 1.2)
     scene.add(ambient)
 
-    const sun = new THREE.DirectionalLight(0xfffbe6, 2.5)
-    sun.position.set(3, 5, 4)
+    const sun = new THREE.DirectionalLight(0xffdd88, 2.8)  // warm golden sun
+    sun.position.set(5, 6, 2)                               // side-angled, not overhead
     sun.castShadow = true
     sun.shadow.mapSize.set(1024, 1024)
     sun.shadow.camera.near = 0.1
     sun.shadow.camera.far = 20
-    sun.shadow.camera.left = -3
-    sun.shadow.camera.right = 3
-    sun.shadow.camera.top = 3
-    sun.shadow.camera.bottom = -3
+    sun.shadow.camera.left = -4
+    sun.shadow.camera.right = 4
+    sun.shadow.camera.top = 4
+    sun.shadow.camera.bottom = -4
     scene.add(sun)
 
-    // Front fill — illuminates hands and face directly toward camera
-    const frontFill = new THREE.DirectionalLight(0xfff0e0, 1.8)
+    // Front fill — keeps hands and face readable toward camera
+    const frontFill = new THREE.DirectionalLight(0xfff0e0, 1.6)
     frontFill.position.set(0, 1.5, 5)
     scene.add(frontFill)
 
-    const fill = new THREE.DirectionalLight(0x87CEEB, 0.8) // sky-colored fill
+    const fill = new THREE.DirectionalLight(0x5bb8f5, 0.7) // sky-colored fill
     fill.position.set(-2, 3, 2)
     scene.add(fill)
 
-    // Ground — baseball infield dirt
+    // ── Grass outfield plane ──────────────────────────────────────────────────
+    const grassCanvas = document.createElement('canvas')
+    grassCanvas.width = 512
+    grassCanvas.height = 512
+    const gCtx = grassCanvas.getContext('2d')
+    gCtx.fillStyle = '#3d7a2e'
+    gCtx.fillRect(0, 0, 512, 512)
+    for (let i = 0; i < 5000; i++) {
+      const gx = Math.random() * 512
+      const gy = Math.random() * 512
+      const v  = Math.floor(Math.random() * 28) - 14
+      gCtx.fillStyle = `rgb(${Math.max(0, 61+v)},${Math.max(0, 122+v)},${Math.max(0, 46+v)})`
+      gCtx.fillRect(gx, gy, Math.random() * 5 + 1, Math.random() * 2 + 1)
+    }
+    const grassTex = new THREE.CanvasTexture(grassCanvas)
+    grassTex.wrapS = THREE.RepeatWrapping
+    grassTex.wrapT = THREE.RepeatWrapping
+    grassTex.repeat.set(10, 10)
+    const grassPlane = new THREE.Mesh(
+      new THREE.PlaneGeometry(28, 28),
+      new THREE.MeshStandardMaterial({ map: grassTex, roughness: 0.92, metalness: 0 })
+    )
+    grassPlane.rotation.x = -Math.PI / 2
+    grassPlane.receiveShadow = true
+    scene.add(grassPlane)
+
+    // ── Dirt patch — coach's box area ────────────────────────────────────────
     const dirtCanvas = document.createElement('canvas')
     dirtCanvas.width = 256
     dirtCanvas.height = 256
     const dCtx = dirtCanvas.getContext('2d')
-    // Base dirt color
-    dCtx.fillStyle = '#c4a56e'
+    dCtx.fillStyle = '#c8a470'
     dCtx.fillRect(0, 0, 256, 256)
-    // Add subtle noise for texture
     for (let i = 0; i < 3000; i++) {
       const x = Math.random() * 256
       const y = Math.random() * 256
       const shade = Math.floor(Math.random() * 30) - 15
-      const r = 196 + shade
-      const g = 165 + shade
-      const b = 110 + shade
-      dCtx.fillStyle = `rgb(${r},${g},${b})`
+      dCtx.fillStyle = `rgb(${Math.max(0,200+shade)},${Math.max(0,164+shade)},${Math.max(0,112+shade)})`
       dCtx.fillRect(x, y, Math.random() * 3 + 1, Math.random() * 3 + 1)
     }
-    const dirtTexture = new THREE.CanvasTexture(dirtCanvas)
-    dirtTexture.wrapS = THREE.RepeatWrapping
-    dirtTexture.wrapT = THREE.RepeatWrapping
-    dirtTexture.repeat.set(4, 4)
-
+    const dirtTex = new THREE.CanvasTexture(dirtCanvas)
+    dirtTex.wrapS = THREE.RepeatWrapping
+    dirtTex.wrapT = THREE.RepeatWrapping
+    dirtTex.repeat.set(3, 3)
     const ground = new THREE.Mesh(
-      new THREE.CircleGeometry(3, 48),
-      new THREE.MeshStandardMaterial({
-        map: dirtTexture,
-        roughness: 0.95,
-        metalness: 0.0,
-      })
+      new THREE.CircleGeometry(2.0, 48),
+      new THREE.MeshStandardMaterial({ map: dirtTex, roughness: 0.95, metalness: 0 })
     )
     ground.rotation.x = -Math.PI / 2
+    ground.position.y = 0.002  // just above grass to prevent z-fighting
     ground.receiveShadow = true
     scene.add(ground)
+
+    // ── Baseline chalk strip (continuous line through dirt and onto grass) ──────
+    // Single strip centered at origin so it runs through the dirt patch (y=0.005
+    // sits above both grass y=0 and dirt y=0.002, making it visible on both).
+    const chalkMat = new THREE.MeshBasicMaterial({ color: 0xf0ece0, transparent: true, opacity: 0.82 })
+    const baseStrip = new THREE.Mesh(new THREE.PlaneGeometry(18, 0.072), chalkMat)
+    baseStrip.rotation.x = -Math.PI / 2
+    baseStrip.position.set(0, 0.005, 0)
+    scene.add(baseStrip)
+
+    // ── Coach's box chalk outline ─────────────────────────────────────────────
+    const bW = 1.5, bD = 0.7, bY = 0.008
+    const boxPts = [
+      new THREE.Vector3(-bW/2, bY, -bD/2), new THREE.Vector3( bW/2, bY, -bD/2),
+      new THREE.Vector3( bW/2, bY, -bD/2), new THREE.Vector3( bW/2, bY,  bD/2),
+      new THREE.Vector3( bW/2, bY,  bD/2), new THREE.Vector3(-bW/2, bY,  bD/2),
+      new THREE.Vector3(-bW/2, bY,  bD/2), new THREE.Vector3(-bW/2, bY, -bD/2),
+    ]
+    scene.add(new THREE.LineSegments(
+      new THREE.BufferGeometry().setFromPoints(boxPts),
+      new THREE.LineBasicMaterial({ color: 0xf0ece0 })
+    ))
 
     resize()
 

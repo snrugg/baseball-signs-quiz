@@ -11,7 +11,7 @@ import * as THREE from 'three'
  *   → moves the right hand to cap, then chest, then belt in sequence,
  *     applying the calibrated hand rotation at each stop.
  */
-export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeftArm, getAnchorRightArm, setTarget, setHandRotation, setLeftArmPose, setPoleOffset, onFrame) {
+export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeftArm, getAnchorRightArm, getModelForward, setTarget, setHandRotation, setLeftArmPose, setPoleOffset, onFrame) {
   const isPlaying = ref(false)
   const currentStep = ref(-1)
   const currentSequence = ref([])
@@ -41,6 +41,48 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
 
   // Start position: where the hand rests between signs
   const restPosition = new THREE.Vector3(0.3, 1.0, 0.2)
+
+  // ── Arc helper ─────────────────────────────────────────────────────────────
+  /**
+   * Compute how far to arc the hand FORWARD (in the model's facing direction)
+   * during a transition to avoid passing through the body.
+   *
+   * The arc is proportional to the horizontal (XZ-plane) distance between the
+   * two endpoints.  Purely vertical transitions (same XZ position) get no arc;
+   * wide lateral swings like left-ear → right-ear get up to ~0.45 units of
+   * forward bow at the midpoint.
+   *
+   * In the position tween's onUpdate we multiply this by the bell-curve value
+   *   bell(t) = 4t(1-t)   (0 at t=0 and t=1, peak of 1 at t=0.5)
+   * and add it along the model's forward direction, so the arc is always zero
+   * at the start and end positions and has no effect on the hold phase.
+   */
+  function arcAmount(sx, sz, tx, tz) {
+    const dx = tx - sx
+    const dz = tz - sz
+    const lateralDist = Math.sqrt(dx * dx + dz * dz)
+    return Math.min(0.45, lateralDist * 1.5)
+  }
+
+  /**
+   * Build the onUpdate callback for a position tween that includes the forward arc.
+   *
+   * @param {object} posTweenRef - object with a `.tween` property set after creation
+   *   (closure trick to reference the tween from inside its own callback)
+   * @param {number} arc - forward arc amount from arcAmount()
+   */
+  function makePositionUpdate(posTweenRef, arc) {
+    return () => {
+      const t = posTweenRef.tween ? posTweenRef.tween.progress() : 0
+      const bell = 4 * t * (1 - t)           // 0→1→0 over the tween duration
+      const fwd  = getModelForward()
+      setTarget(new THREE.Vector3(
+        animatedPos.x + fwd.x * bell * arc,
+        animatedPos.y,                        // no vertical arc (looks unnatural)
+        animatedPos.z + fwd.z * bell * arc,
+      ))
+    }
+  }
 
   /**
    * Per-frame update: if we have a sticky anchor and we're not mid-tween,
@@ -117,18 +159,20 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
         stickyAnchor = null
         isAnimating = true
 
-        // Tween position back to rest
-        _currentTween = gsap.to(animatedPos, {
+        // Capture start and compute arc before the tween mutates animatedPos
+        const arc = arcAmount(animatedPos.x, animatedPos.z, restPosition.x, restPosition.z)
+        const ref  = {}  // closure ref so onUpdate can call tween.progress()
+        const tween = gsap.to(animatedPos, {
           duration: moveTime,
           x: restPosition.x,
           y: restPosition.y,
           z: restPosition.z,
           ease,
-          onUpdate: () => {
-            setTarget(new THREE.Vector3(animatedPos.x, animatedPos.y, animatedPos.z))
-          },
+          onUpdate: makePositionUpdate(ref, arc),
           onComplete: finish,
         })
+        ref.tween  = tween
+        _currentTween = tween
 
         // Tween hand rotation back to neutral in parallel
         gsap.to(animatedRot, {
@@ -184,14 +228,14 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
         const [targetFwd, targetRaise]       = getAnchorLeftArm(name)
         const [targetOut, targetUp]          = getAnchorRightArm(name)
 
-        // Tween position
-        _currentTween = gsap.to(animatedPos, {
+        // Arc: computed from current position BEFORE the tween mutates animatedPos
+        const arc  = arcAmount(animatedPos.x, animatedPos.z, tx, tz)
+        const ref  = {}
+        const tween = gsap.to(animatedPos, {
           duration: moveTime,
           x: tx, y: ty, z: tz,
           ease,
-          onUpdate: () => {
-            setTarget(new THREE.Vector3(animatedPos.x, animatedPos.y, animatedPos.z))
-          },
+          onUpdate: makePositionUpdate(ref, arc),
           onComplete: () => {
             if (cancelled) return
             // Hold phase — sticky anchor keeps position locked to bone;
@@ -204,6 +248,8 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
             })
           },
         })
+        ref.tween  = tween
+        _currentTween = tween
 
         // Tween hand rotation in parallel
         gsap.to(animatedRot, {
@@ -258,20 +304,21 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
     isPlaying.value = true
     isAnimating = true
 
-    // Tween position
-    _currentTween = gsap.to(animatedPos, {
+    const arc  = arcAmount(animatedPos.x, animatedPos.z, pos.x, pos.z)
+    const ref  = {}
+    const tween = gsap.to(animatedPos, {
       duration,
       x: pos.x, y: pos.y, z: pos.z,
       ease: 'power2.inOut',
-      onUpdate: () => {
-        setTarget(new THREE.Vector3(animatedPos.x, animatedPos.y, animatedPos.z))
-      },
+      onUpdate: makePositionUpdate(ref, arc),
       onComplete: () => {
         isPlaying.value = false
         isAnimating = false
         stickyAnchor = anchorName
       },
     })
+    ref.tween  = tween
+    _currentTween = tween
 
     // Tween hand rotation in parallel
     gsap.to(animatedRot, {
@@ -311,17 +358,19 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
     stopCurrent()
     isAnimating = true
 
-    _currentTween = gsap.to(animatedPos, {
+    const arc  = arcAmount(animatedPos.x, animatedPos.z, restPosition.x, restPosition.z)
+    const ref  = {}
+    const tween = gsap.to(animatedPos, {
       duration,
       x: restPosition.x, y: restPosition.y, z: restPosition.z,
       ease: 'power2.inOut',
-      onUpdate: () => {
-        setTarget(new THREE.Vector3(animatedPos.x, animatedPos.y, animatedPos.z))
-      },
+      onUpdate: makePositionUpdate(ref, arc),
       onComplete: () => {
         isAnimating = false
       },
     })
+    ref.tween  = tween
+    _currentTween = tween
 
     gsap.to(animatedRot, {
       duration,

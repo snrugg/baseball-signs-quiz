@@ -19,10 +19,11 @@ export const INDICATOR = 'billOfCap'
  * Anchors not listed here (and not INDICATOR) are decoys with no meaning.
  */
 export const SIGN_MEANINGS = {
-  topOfHead: 'Steal',
-  nose:      'Take',
-  chin:      'Bunt',
-  chest:     'Hit and Run',
-  belt:      'Squeeze Play',
-  leftArm:   'Hit Away',
+  leftArm:      'Hit & Run',
+  frontOfLeg:   'Straight Steal',
+  backOfLeg:    'Delayed Steal',
+  nose:         'Sacrifice Bunt',
+  topOfHead:    'Bunt for Base Hit',
+  chin:         'Squeeze Bunt',
+  frontOfHand:  'Take'
 }

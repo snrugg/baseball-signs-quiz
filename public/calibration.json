@@ -1,0 +1,317 @@
+{
+  "billOfCap": {
+    "bone": "Head",
+    "offset": [
+      -0.12,
+      0.13,
+      0.215
+    ],
+    "rotation": [
+      118,
+      6,
+      -96
+    ],
+    "leftArm": [
+      0,
+      0
+    ],
+    "rightArm": [
+      -3,
+      0
+    ]
+  },
+  "topOfHead": {
+    "bone": "HeadTop_End",
+    "offset": [
+      -0.075,
+      0.015,
+      -0.06
+    ],
+    "rotation": [
+      89.40919012506896,
+      2,
+      -50
+    ],
+    "leftArm": [
+      0,
+      0
+    ],
+    "rightArm": [
+      -3,
+      1.55
+    ]
+  },
+  "backOfHead": {
+    "bone": "Head",
+    "offset": [
+      -0.1,
+      0.1,
+      -0.025
+    ],
+    "rotation": [
+      17,
+      10,
+      -61
+    ],
+    "leftArm": [
+      0,
+      0
+    ],
+    "rightArm": [
+      -3,
+      2.65
+    ]
+  },
+  "nose": {
+    "bone": "Head",
+    "offset": [
+      0,
+      -0.025,
+      0.165
+    ],
+    "rotation": [
+      0,
+      180,
+      0
+    ],
+    "leftArm": [
+      0,
+      0
+    ],
+    "rightArm": [
+      0,
+      0
+    ]
+  },
+  "chin": {
+    "bone": "Head",
+    "offset": [
+      -0.07,
+      -0.015,
+      0.145
+    ],
+    "rotation": [
+      -71,
+      14,
+      -79
+    ],
+    "leftArm": [
+      0,
+      0
+    ],
+    "rightArm": [
+      -1.95,
+      0
+    ]
+  },
+  "leftEar": {
+    "bone": "Head",
+    "offset": [
+      -0.12,
+      0.02,
+      0.035
+    ],
+    "rotation": [
+      0,
+      86,
+      8
+    ],
+    "leftArm": [
+      0,
+      0
+    ],
+    "rightArm": [
+      -1.55,
+      -0.25
+    ]
+  },
+  "rightEar": {
+    "bone": "Head",
+    "offset": [
+      0.1,
+      -0.015,
+      0.015
+    ],
+    "rotation": [
+      19,
+      -97,
+      3
+    ],
+    "leftArm": [
+      0,
+      0
+    ],
+    "rightArm": [
+      -0.95,
+      0.35
+    ]
+  },
+  "chest": {
+    "bone": "Spine2",
+    "offset": [
+      0,
+      0.05,
+      0.16
+    ],
+    "rotation": [
+      15,
+      165,
+      54
+    ],
+    "leftArm": [
+      0,
+      0
+    ],
+    "rightArm": [
+      0,
+      0
+    ]
+  },
+  "belt": {
+    "bone": "Spine1",
+    "offset": [
+      -0.085,
+      -0.07,
+      0.21
+    ],
+    "rotation": [
+      180,
+      26,
+      -64
+    ],
+    "leftArm": [
+      0,
+      0
+    ],
+    "rightArm": [
+      -2.55,
+      0
+    ]
+  },
+  "leftArm": {
+    "bone": "LeftArm",
+    "offset": [
+      -0.2,
+      0.015,
+      0.01
+    ],
+    "rotation": [
+      180,
+      -33,
+      -95
+    ],
+    "leftArm": [
+      0,
+      0
+    ],
+    "rightArm": [
+      0,
+      0
+    ]
+  },
+  "rightArm": {
+    "bone": "RightShoulder",
+    "offset": [
+      0,
+      0,
+      0.08
+    ],
+    "rotation": [
+      0,
+      0,
+      0
+    ],
+    "leftArm": [
+      0,
+      0
+    ],
+    "rightArm": [
+      0,
+      0
+    ]
+  },
+  "frontOfLeg": {
+    "bone": "RightUpLeg",
+    "offset": [
+      -0.04,
+      -0.025,
+      0.215
+    ],
+    "rotation": [
+      180,
+      65,
+      0
+    ],
+    "leftArm": [
+      0,
+      0
+    ],
+    "rightArm": [
+      0,
+      0
+    ]
+  },
+  "backOfLeg": {
+    "bone": "RightUpLeg",
+    "offset": [
+      0.075,
+      0.11,
+      -0.08
+    ],
+    "rotation": [
+      -173,
+      -180,
+      0
+    ],
+    "leftArm": [
+      0,
+      0
+    ],
+    "rightArm": [
+      0,
+      0
+    ]
+  },
+  "frontOfHand": {
+    "bone": "LeftHand",
+    "offset": [
+      0,
+      0.01,
+      0.04
+    ],
+    "rotation": [
+      0,
+      0,
+      -180
+    ],
+    "leftArm": [
+      -5,
+      39
+    ],
+    "rightArm": [
+      0,
+      0
+    ]
+  },
+  "backOfHand": {
+    "bone": "LeftHand",
+    "offset": [
+      -0.02,
+      0.34,
+      -0.395
+    ],
+    "rotation": [
+      168,
+      -36,
+      -7
+    ],
+    "leftArm": [
+      -3,
+      47
+    ],
+    "rightArm": [
+      0,
+      0
+    ]
+  }
+}

@@ -55,6 +55,14 @@ const {
   computeAutoHandRotation,
 } = useIK(model, skeleton, boneMap, onFrame)
 
+// Returns the model's forward direction (local +Z) in world space.
+// The model only ever rotates around Y, so forward = (sin θ, 0, cos θ).
+// Used by the sequencer to arc transition paths in front of the body.
+function getModelForward() {
+  const theta = modelRotation.value
+  return { x: Math.sin(theta), y: 0, z: Math.cos(theta) }
+}
+
 // Initialize sequencer — now receives rotation accessors alongside position
 const {
   isPlaying,
@@ -65,7 +73,7 @@ const {
   moveToRest,
   stop,
   initPosition,
-} = useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeftArm, getAnchorRightArm, setTarget, setHandRotation, setLeftArmPose, setPoleOffset, onFrame)
+} = useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeftArm, getAnchorRightArm, getModelForward, setTarget, setHandRotation, setLeftArmPose, setPoleOffset, onFrame)
 
 // Provide everything to child components
 provide('scene', {

@@ -77,16 +77,22 @@ function choiceClass(choice) {
   return { dimmed: true }
 }
 
+// ── Replay state ──────────────────────────────────────────────────────────────
+const lastAnchors     = ref([])
+const lastPlayOptions = ref({})
+
 // ── Just the Sign ─────────────────────────────────────────────────────────────
 async function startJustSign() {
   currentSign.value  = pickTarget()
   choices.value      = buildChoices(currentSign.value)
   quizState.value    = 'playing'
 
-  await sequencer.playSign(signDefs.getSignAnchors(currentSign.value), {
-    holdTime: 1.2,
-    moveTime: 0.5,
-  })
+  const seqAnchors = signDefs.getSignAnchors(currentSign.value)
+  const seqOptions = { holdTime: 1.2, moveTime: 0.5 }
+  lastAnchors.value     = seqAnchors
+  lastPlayOptions.value = seqOptions
+
+  await sequencer.playSign(seqAnchors, seqOptions)
 
   quizState.value = 'answering'
 }
@@ -117,13 +123,21 @@ async function startGameDay() {
   choices.value     = buildChoices(currentSign.value)
   quizState.value   = 'playing'
 
-  const seq = buildGameDaySequence(currentSign.value, sequenceLength.value)
+  const seq     = buildGameDaySequence(currentSign.value, sequenceLength.value)
+  const options = { holdTime: gameDayHold.value / gameDaySpeed.value, moveTime: 0.4 / gameDaySpeed.value }
+  lastAnchors.value     = seq
+  lastPlayOptions.value = options
 
-  await sequencer.playSign(seq, {
-    holdTime: gameDayHold.value / gameDaySpeed.value,
-    moveTime: 0.4 / gameDaySpeed.value,
-  })
+  await sequencer.playSign(seq, options)
 
+  quizState.value = 'answering'
+}
+
+// ── Replay ────────────────────────────────────────────────────────────────────
+async function replaySign() {
+  if (quizState.value !== 'answering') return
+  quizState.value = 'playing'
+  await sequencer.playSign(lastAnchors.value, lastPlayOptions.value)
   quizState.value = 'answering'
 }
 
@@ -171,6 +185,11 @@ function onKeyDown(e) {
   }
 
   if (quizState.value === 'answering') {
+    if (e.key === 'r' || e.key === 'R') {
+      e.preventDefault()
+      replaySign()
+      return
+    }
     const idx = parseInt(e.key, 10) - 1
     if (idx >= 0 && idx < choices.value.length) {
       selectAnswer(choices.value[idx])
@@ -333,6 +352,14 @@ onBeforeUnmount(() => {
         >
           <span class="choice-key">{{ idx + 1 }}</span>
           {{ choice }}
+        </button>
+      </div>
+
+      <!-- Replay button (answering state only) -->
+      <div v-if="quizState === 'answering'" class="replay-row">
+        <button class="btn-replay" @click="replaySign">
+          ↺ Replay
+          <span class="key-chip key-chip-inline">R</span>
         </button>
       </div>
 
@@ -799,6 +826,32 @@ onBeforeUnmount(() => {
 .btn-next:hover {
   background: rgba(255, 255, 255, 0.13);
   color: #fff;
+}
+
+/* ── Replay ────────────────────────────────── */
+.replay-row {
+  display: flex;
+  justify-content: center;
+}
+
+.btn-replay {
+  padding: 5px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #666;
+  font-size: 0.78rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s;
+}
+
+.btn-replay:hover {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #aaa;
 }
 
 /* ── Transitions ───────────────────────────── */

@@ -254,58 +254,68 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
         const [targetFwd, targetRaise]       = getAnchorLeftArm(name)
         const [targetOut, targetUp]          = getAnchorRightArm(name)
 
-        // Arc: computed from current position BEFORE the tween mutates animatedPos
-        const arc  = arcAmount(animatedPos.x, animatedPos.z, tx, tz)
-        const ref  = {}
-        const tween = gsap.to(animatedPos, {
-          duration: moveTime,
-          x: tx, y: ty, z: tz,
-          ease,
-          onUpdate: makePositionUpdate(ref, arc),
-          onComplete: () => {
-            if (cancelled) return
-            // Hold phase — sticky anchor keeps position locked to bone;
-            // rotation is already at target so no extra work needed
-            isAnimating = false
-            _currentDelay = gsap.delayedCall(holdTime, () => {
+        // Main move: tween to target with arc, hold, then advance
+        function doMainMove() {
+          if (cancelled) return
+          const arc  = arcAmount(animatedPos.x, animatedPos.z, tx, tz)
+          const ref  = {}
+          const tween = gsap.to(animatedPos, {
+            duration: moveTime,
+            x: tx, y: ty, z: tz,
+            ease,
+            onUpdate: makePositionUpdate(ref, arc),
+            onComplete: () => {
               if (cancelled) return
-              isAnimating = true
-              step(index + 1)
-            })
-          },
-        })
-        ref.tween  = tween
-        _currentTween = tween
+              // Hold phase — sticky anchor keeps position locked to bone
+              isAnimating = false
+              _currentDelay = gsap.delayedCall(holdTime, () => {
+                if (cancelled) return
+                isAnimating = true
+                step(index + 1)
+              })
+            },
+          })
+          ref.tween  = tween
+          _currentTween = tween
 
-        // Tween hand rotation in parallel
-        gsap.to(animatedRot, {
-          duration: moveTime,
-          rx: targetRx, ry: targetRy, rz: targetRz,
-          ease,
-          onUpdate: () => {
-            setHandRotation(animatedRot.rx, animatedRot.ry, animatedRot.rz)
-          },
-        })
+          gsap.to(animatedRot, {
+            duration: moveTime,
+            rx: targetRx, ry: targetRy, rz: targetRz,
+            ease,
+            onUpdate: () => setHandRotation(animatedRot.rx, animatedRot.ry, animatedRot.rz),
+          })
+          gsap.to(animatedLeftArm, {
+            duration: moveTime,
+            forward: targetFwd, raise: targetRaise,
+            ease,
+            onUpdate: () => setLeftArmPose(animatedLeftArm.forward, animatedLeftArm.raise),
+          })
+          gsap.to(animatedRightArm, {
+            duration: moveTime,
+            out: targetOut, up: targetUp,
+            ease,
+            onUpdate: () => setPoleOffset(animatedRightArm.out, animatedRightArm.up),
+          })
+        }
 
-        // Tween left arm pose in parallel
-        gsap.to(animatedLeftArm, {
-          duration: moveTime,
-          forward: targetFwd, raise: targetRaise,
-          ease,
-          onUpdate: () => {
-            setLeftArmPose(animatedLeftArm.forward, animatedLeftArm.raise)
-          },
-        })
+        // Duplicate anchor: bounce partway toward rest so the repeat is visually distinct
+        if (index > 0 && anchorNames[index] === anchorNames[index - 1]) {
+          const bd = moveTime * 0.4
+          const bx = animatedPos.x + (restPosition.x - animatedPos.x) * 0.35
+          const by = animatedPos.y + (restPosition.y - animatedPos.y) * 0.25
+          const bz = animatedPos.z + (restPosition.z - animatedPos.z) * 0.35
+          const bounceTween = gsap.to(animatedPos, {
+            duration: bd,
+            x: bx, y: by, z: bz,
+            ease: 'power2.out',
+            onUpdate: () => setTarget(new THREE.Vector3(animatedPos.x, animatedPos.y, animatedPos.z)),
+            onComplete: doMainMove,
+          })
+          _currentTween = bounceTween
+          return
+        }
 
-        // Tween right arm elbow bias in parallel
-        gsap.to(animatedRightArm, {
-          duration: moveTime,
-          out: targetOut, up: targetUp,
-          ease,
-          onUpdate: () => {
-            setPoleOffset(animatedRightArm.out, animatedRightArm.up)
-          },
-        })
+        doMainMove()
       }
 
       step(0)

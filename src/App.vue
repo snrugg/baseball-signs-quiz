@@ -19,42 +19,43 @@ const mode = ref('gameDay')
 <template>
   <div class="app-layout" :class="{ 'panel-active': mode !== 'calibrate' }">
 
+    <!-- Navigation tabs — absolute on desktop (overlays scene), static on mobile
+         (becomes first flex row so the canvas starts below, not under, the tabs) -->
+    <nav class="mode-tabs">
+      <button
+        class="mode-tab"
+        :class="{ active: mode === 'review' }"
+        @click="mode = 'review'"
+      >
+        Review
+      </button>
+      <button
+        class="mode-tab"
+        :class="{ active: mode === 'justSign' }"
+        @click="mode = 'justSign'"
+      >
+        Just Sign
+      </button>
+      <button
+        class="mode-tab"
+        :class="{ active: mode === 'gameDay' }"
+        @click="mode = 'gameDay'"
+      >
+        Game Day
+      </button>
+      <button
+        v-if="showCalibration"
+        class="mode-tab"
+        :class="{ active: mode === 'calibrate' }"
+        @click="mode = 'calibrate'"
+      >
+        Calibrate
+      </button>
+    </nav>
+
     <!-- Scene wrapper: flex-grows to fill available space on mobile -->
     <div class="scene-wrapper">
       <SceneView>
-        <!-- Top navigation bar -->
-        <nav class="mode-tabs">
-          <button
-            class="mode-tab"
-            :class="{ active: mode === 'review' }"
-            @click="mode = 'review'"
-          >
-            Review
-          </button>
-          <button
-            class="mode-tab"
-            :class="{ active: mode === 'justSign' }"
-            @click="mode = 'justSign'"
-          >
-            Just Sign
-          </button>
-          <button
-            class="mode-tab"
-            :class="{ active: mode === 'gameDay' }"
-            @click="mode = 'gameDay'"
-          >
-            Game Day
-          </button>
-          <button
-            v-if="showCalibration"
-            class="mode-tab"
-            :class="{ active: mode === 'calibrate' }"
-            @click="mode = 'calibrate'"
-          >
-            Calibrate
-          </button>
-        </nav>
-
         <!-- Review mode — component stays here for provide/inject;
              on mobile it teleports its DOM to #quiz-portal below -->
         <ReviewPanel v-if="mode === 'review'" />
@@ -145,20 +146,22 @@ const mode = ref('gameDay')
   border-color: #4488ff;
 }
 
-/* ── Mobile: full-width header strip ──────────────────────── */
+/* ── Mobile: full-width header strip (no longer overlays canvas) ── */
 @media (max-width: 600px) {
   .mode-tabs {
-    /* Span the full width of the scene area as a proper header strip */
-    top: 0;
-    left: 0;
-    right: 0;
+    /* Override absolute positioning — becomes a proper flex row above the scene */
+    position: static;
+    top: auto;
+    left: auto;
     width: 100%;
-    padding: 6px 6px;
+    padding: 6px;
     gap: 4px;
     background: rgba(14, 14, 30, 0.92);
     backdrop-filter: blur(10px);
     border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     box-sizing: border-box;
+    /* Ensure tabs stay a flex row */
+    flex-shrink: 0;
   }
 
   .mode-tab {

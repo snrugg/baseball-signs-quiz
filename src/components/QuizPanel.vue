@@ -1,13 +1,15 @@
 <script setup>
-import { ref, computed, inject, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, inject, onMounted, onBeforeUnmount } from 'vue'
+
+// ── quizMode comes from App.vue's top nav (replaces internal mode state) ──────
+const props = defineProps({
+  quizMode: { type: String, default: 'gameDay' }, // 'justSign' | 'gameDay'
+})
 
 const anchors   = inject('anchors')
 const ik        = inject('ik')
 const sequencer = inject('sequencer')
 const signDefs  = inject('signDefs')
-
-// ── Mode ──────────────────────────────────────────────────────────────────────
-const mode = ref('gameDay')  // 'justSign' | 'gameDay'
 
 // ── Game Day settings ─────────────────────────────────────────────────────────
 const gameDaySpeed   = ref(1.0)
@@ -18,6 +20,20 @@ const settingsOpen   = ref(false) // sliders hidden by default
 // ── State machine ─────────────────────────────────────────────────────────────
 // 'idle' → 'playing' → 'answering' → 'feedback' → 'idle'
 const quizState = ref('idle')
+
+// Generation counter: incremented when quizMode changes so that any in-flight
+// playSign await knows it has been superseded and should not transition state.
+const generation = ref(0)
+
+// When the parent switches quiz sub-mode via the top nav, reset to idle cleanly.
+watch(() => props.quizMode, () => {
+  generation.value++
+  quizState.value    = 'idle'
+  settingsOpen.value = false
+  selectedChoice.value = null
+  wasCorrect.value   = false
+  currentSign.value  = null
+})
 
 // ── Current question ──────────────────────────────────────────────────────────
 // currentSign holds the meaning string (e.g. "Hit & Run") — it IS the answer
@@ -83,6 +99,7 @@ const lastPlayOptions = ref({})
 
 // ── Just the Sign ─────────────────────────────────────────────────────────────
 async function startJustSign() {
+  const gen = ++generation.value
   currentSign.value  = pickTarget()
   choices.value      = buildChoices(currentSign.value)
   quizState.value    = 'playing'
@@ -94,6 +111,7 @@ async function startJustSign() {
 
   await sequencer.playSign(seqAnchors, seqOptions)
 
+  if (generation.value !== gen) return // quiz mode changed mid-play
   quizState.value = 'answering'
 }
 
@@ -119,6 +137,7 @@ function buildGameDaySequence(meaning, N) {
 }
 
 async function startGameDay() {
+  const gen = ++generation.value
   currentSign.value = pickTarget()
   choices.value     = buildChoices(currentSign.value)
   quizState.value   = 'playing'
@@ -130,14 +149,17 @@ async function startGameDay() {
 
   await sequencer.playSign(seq, options)
 
+  if (generation.value !== gen) return // quiz mode changed mid-play
   quizState.value = 'answering'
 }
 
 // ── Replay ────────────────────────────────────────────────────────────────────
 async function replaySign() {
   if (quizState.value !== 'answering') return
+  const gen = ++generation.value
   quizState.value = 'playing'
   await sequencer.playSign(lastAnchors.value, lastPlayOptions.value)
+  if (generation.value !== gen) return
   quizState.value = 'answering'
 }
 
@@ -166,7 +188,7 @@ function resetScore() {
 
 function startQuiz() {
   if (!ik.ikReady.value || quizState.value !== 'idle') return
-  if (mode.value === 'justSign') startJustSign()
+  if (props.quizMode === 'justSign') startJustSign()
   else startGameDay()
 }
 
@@ -236,29 +258,9 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <!-- Mode selector -->
-    <div class="mode-tabs">
-      <button
-        class="mode-tab"
-        :class="{ active: mode === 'justSign' }"
-        :disabled="quizState !== 'idle'"
-        @click="mode = 'justSign'"
-      >
-        Just the Sign
-      </button>
-      <button
-        class="mode-tab"
-        :class="{ active: mode === 'gameDay' }"
-        :disabled="quizState !== 'idle'"
-        @click="mode = 'gameDay'"
-      >
-        Game Day
-      </button>
-    </div>
-
     <!-- Game Day: indicator note (always visible) + collapsible sliders -->
     <transition name="slide-fade">
-      <div v-if="mode === 'gameDay'" class="gameday-controls">
+      <div v-if="props.quizMode === 'gameDay'" class="gameday-controls">
         <div class="indicator-note">
           Indicator: <strong>{{ anchors.ANCHOR_LABELS[signDefs.indicator.value] }}</strong>
         </div>
@@ -308,7 +310,7 @@ onBeforeUnmount(() => {
 
     <!-- Idle: hint + start button -->
     <div v-if="quizState === 'idle'" class="start-section">
-      <p v-if="mode === 'justSign'" class="hint">
+      <p v-if="props.quizMode === 'justSign'" class="hint">
         Watch the sign, then identify the call.
       </p>
       <p v-else class="hint">
@@ -330,7 +332,7 @@ onBeforeUnmount(() => {
         <span class="pulse-dot"></span>
         <span>Watch carefully...</span>
       </div>
-      <div v-if="mode === 'gameDay' && sequencer.currentStep.value >= 0" class="step-counter">
+      <div v-if="props.quizMode === 'gameDay' && sequencer.currentStep.value >= 0" class="step-counter">
         Sign {{ sequencer.currentStep.value + 1 }}&thinsp;/&thinsp;{{ sequencer.currentSequence.value.length }}
       </div>
     </div>
@@ -338,7 +340,7 @@ onBeforeUnmount(() => {
     <!-- Answering + Feedback: multiple choice -->
     <div v-if="quizState === 'answering' || quizState === 'feedback'" class="answer-section">
       <p class="question">
-        {{ mode === 'justSign' ? "What's the call?" : "What was the call after the indicator?" }}
+        {{ props.quizMode === 'justSign' ? "What's the call?" : "What was the call after the indicator?" }}
       </p>
 
       <div class="choices">
@@ -881,14 +883,14 @@ onBeforeUnmount(() => {
 /* ── Mobile ────────────────────────────────── */
 /* On mobile the quiz panel teleports to #quiz-portal, which sits BELOW
    the canvas in a flex-column layout (see App.vue).  The panel therefore
-   fills its own space — no absolute positioning or max-height needed. */
+   fills its own space — no absolute positioning or max-height needed.
+   The quiz sub-mode (Just Sign / Game Day) now lives in the top nav bar,
+   so the panel-header and mode-tabs rows are hidden to reclaim space for
+   the four answer choices + Next button. */
 @media (max-width: 600px) {
   .quiz-panel {
     position: relative;
-    top: auto;
-    right: auto;
-    bottom: auto;
-    left: auto;
+    top: auto; right: auto; bottom: auto; left: auto;
     width: 100%;
     height: 100%;
     max-height: none;
@@ -897,11 +899,25 @@ onBeforeUnmount(() => {
     border-right: none;
     border-bottom: none;
     border-top: 1px solid rgba(255, 255, 255, 0.12);
-    /* safe-area padding for iPhone notch */
-    padding-bottom: max(16px, env(safe-area-inset-bottom));
-    /* allow native touch scrolling */
+    padding: 10px 12px;
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
   }
+
+  /* Mode is shown in top nav — title is redundant on mobile */
+  .panel-header { display: none; }
+
+  /* Keyboard hints are irrelevant on touch devices */
+  .key-hint-row { display: none; }
+
+  /* Tighter vertical rhythm so all 4 choices + Next fit without scrolling */
+  .answer-section { gap: 8px; }
+  .choices { gap: 4px; }
+  .choice-btn { padding: 8px 10px; }
+  .feedback-section { gap: 6px; }
+  .start-section { gap: 8px; }
+  .gameday-controls { margin-bottom: 8px; }
+  .btn-start { padding: 11px; font-size: 0.95rem; }
 }
 </style>

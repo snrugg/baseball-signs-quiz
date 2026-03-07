@@ -38,6 +38,7 @@ const {
   setAnchorLeftArm,
   getAnchorRightArm,
   setAnchorRightArm,
+  getAnchorArcAxis,
   createSpheres,
   setSpheresVisible,
   setAnchorOffset,
@@ -78,7 +79,7 @@ const {
   moveToRest,
   stop,
   initPosition,
-} = useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeftArm, getAnchorRightArm, getModelForward, setTarget, setHandRotation, setLeftArmPose, setPoleOffset, onFrame, setIKEnabled, getHandWorldPos)
+} = useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeftArm, getAnchorRightArm, getAnchorArcAxis, getModelForward, setTarget, setHandRotation, setLeftArmPose, setPoleOffset, onFrame, setIKEnabled, getHandWorldPos)
 
 // Initialize sign definitions (async fetch from public/signs.json, falls back to defaults)
 const {

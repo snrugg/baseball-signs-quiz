@@ -34,14 +34,16 @@ const ANCHOR_POSITIONS = {
   nose:       new THREE.Vector3(0,  1.68, 0.12),
   leftEar:    new THREE.Vector3(-0.09, 1.7, 0.02),
   frontOfLeg: new THREE.Vector3(0.1, 0.7, 0.12),
+  backOfLeg:  new THREE.Vector3(0.1, 0.7, -0.12),
 }
 
-function makeSequencer() {
+function makeSequencer({ arcAxisOverride } = {}) {
   const getAnchorWorldPos = vi.fn((name) => ANCHOR_POSITIONS[name] ?? new THREE.Vector3(0, 1, 0))
   const getAnchorRotation = vi.fn(() => [0, 0, 0])
   const getAnchorLeftArm  = vi.fn(() => [0, 0])
   const getAnchorRightArm = vi.fn(() => [0, 0])
-  const getModelForward   = vi.fn(() => new THREE.Vector3(0, 0, 1))
+  const getAnchorArcAxis  = vi.fn((name) => arcAxisOverride ?? (name === 'backOfLeg' ? 'down' : 'forward'))
+  const getModelForward   = vi.fn(() => ({ x: 0, y: 0, z: 1 }))
   const setTarget         = vi.fn()
   const setHandRotation   = vi.fn()
   const setLeftArmPose    = vi.fn()
@@ -54,8 +56,8 @@ function makeSequencer() {
 
   const sequencer = useSequencer(
     getAnchorWorldPos, getAnchorRotation, getAnchorLeftArm, getAnchorRightArm,
-    getModelForward, setTarget, setHandRotation, setLeftArmPose, setPoleOffset,
-    onFrame, setIKEnabled, getHandWorldPos,
+    getAnchorArcAxis, getModelForward, setTarget, setHandRotation, setLeftArmPose,
+    setPoleOffset, onFrame, setIKEnabled, getHandWorldPos,
   )
 
   const runFrame = () => frameCallbacks.forEach(cb => cb())
@@ -64,8 +66,8 @@ function makeSequencer() {
     sequencer,
     mocks: {
       getAnchorWorldPos, getAnchorRotation, getAnchorLeftArm, getAnchorRightArm,
-      getModelForward, setTarget, setHandRotation, setLeftArmPose, setPoleOffset,
-      setIKEnabled, getHandWorldPos, onFrame,
+      getAnchorArcAxis, getModelForward, setTarget, setHandRotation, setLeftArmPose,
+      setPoleOffset, setIKEnabled, getHandWorldPos, onFrame,
     },
     runFrame,
   }
@@ -159,12 +161,13 @@ describe('useSequencer — playSign', () => {
     expect(mocks.getAnchorWorldPos).toHaveBeenCalledWith('belt')
   })
 
-  it('calls getAnchorRotation, getAnchorLeftArm, getAnchorRightArm for each anchor', async () => {
+  it('calls getAnchorRotation, getAnchorLeftArm, getAnchorRightArm, getAnchorArcAxis for each anchor', async () => {
     const { sequencer, mocks } = makeSequencer()
     await sequencer.playSign(['billOfCap'])
     expect(mocks.getAnchorRotation).toHaveBeenCalledWith('billOfCap')
     expect(mocks.getAnchorLeftArm).toHaveBeenCalledWith('billOfCap')
     expect(mocks.getAnchorRightArm).toHaveBeenCalledWith('billOfCap')
+    expect(mocks.getAnchorArcAxis).toHaveBeenCalledWith('billOfCap')
   })
 
   it('sets currentSequence to the anchor array', async () => {
@@ -357,5 +360,47 @@ describe('useSequencer — forward arc', () => {
     const { sequencer, mocks } = makeSequencer()
     await sequencer.playSign(['billOfCap', 'frontOfLeg'])
     expect(mocks.getModelForward).toHaveBeenCalled()
+  })
+})
+
+// ── Tests: downward arc (backOfLeg) ──────────────────────────────────────────
+
+describe('useSequencer — downward arc', () => {
+  it('calls getAnchorArcAxis for backOfLeg', async () => {
+    const { sequencer, mocks } = makeSequencer()
+    await sequencer.playSign(['belt', 'backOfLeg'])
+    expect(mocks.getAnchorArcAxis).toHaveBeenCalledWith('backOfLeg')
+  })
+
+  it('does NOT call getModelForward when arcAxis is down', () => {
+    // Use moveToAnchor (no return-to-rest) so only the down-arc path runs
+    const { sequencer, mocks } = makeSequencer({ arcAxisOverride: 'down' })
+    sequencer.moveToAnchor('backOfLeg')
+    expect(mocks.getModelForward).not.toHaveBeenCalled()
+  })
+
+  it('getModelForward IS called for forward-arc anchors', async () => {
+    const { sequencer, mocks } = makeSequencer()
+    await sequencer.playSign(['belt', 'frontOfLeg'])
+    expect(mocks.getModelForward).toHaveBeenCalled()
+  })
+
+  it('setTarget is called for backOfLeg transition', async () => {
+    const { sequencer, mocks } = makeSequencer()
+    await sequencer.playSign(['belt', 'backOfLeg'])
+    expect(mocks.setTarget).toHaveBeenCalled()
+  })
+
+  it('moveToAnchor calls getAnchorArcAxis', () => {
+    const { sequencer, mocks } = makeSequencer()
+    sequencer.moveToAnchor('backOfLeg')
+    expect(mocks.getAnchorArcAxis).toHaveBeenCalledWith('backOfLeg')
+  })
+
+  it('moveToSequence calls getAnchorArcAxis for each anchor', async () => {
+    const { sequencer, mocks } = makeSequencer()
+    await sequencer.moveToSequence(['belt', 'backOfLeg'])
+    expect(mocks.getAnchorArcAxis).toHaveBeenCalledWith('belt')
+    expect(mocks.getAnchorArcAxis).toHaveBeenCalledWith('backOfLeg')
   })
 })

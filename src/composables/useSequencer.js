@@ -11,7 +11,7 @@ import * as THREE from 'three'
  *   → moves the right hand to cap, then chest, then belt in sequence,
  *     applying the calibrated hand rotation at each stop.
  */
-export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeftArm, getAnchorRightArm, getModelForward, setTarget, setHandRotation, setLeftArmPose, setPoleOffset, onFrame, setIKEnabled, getHandWorldPos) {
+export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeftArm, getAnchorRightArm, getAnchorArcAxis, getModelForward, setTarget, setHandRotation, setLeftArmPose, setPoleOffset, onFrame, setIKEnabled, getHandWorldPos) {
   const isPlaying = ref(false)
   const currentStep = ref(-1)
   const currentSequence = ref([])
@@ -95,16 +95,25 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
    *   (closure trick to reference the tween from inside its own callback)
    * @param {number} arc - forward arc amount from arcAmount()
    */
-  function makePositionUpdate(posTweenRef, arc) {
+  function makePositionUpdate(posTweenRef, arc, arcAxis = 'forward') {
     return () => {
       const t = posTweenRef.tween ? posTweenRef.tween.progress() : 0
       const bell = 4 * t * (1 - t)           // 0→1→0 over the tween duration
-      const fwd  = getModelForward()
-      setTarget(new THREE.Vector3(
-        animatedPos.x + fwd.x * bell * arc,
-        animatedPos.y,                        // no vertical arc (looks unnatural)
-        animatedPos.z + fwd.z * bell * arc,
-      ))
+      if (arcAxis === 'down') {
+        // Bow downward to route the hand below the hip on the way to rear anchors
+        setTarget(new THREE.Vector3(
+          animatedPos.x,
+          animatedPos.y - bell * arc,
+          animatedPos.z,
+        ))
+      } else {
+        const fwd = getModelForward()
+        setTarget(new THREE.Vector3(
+          animatedPos.x + fwd.x * bell * arc,
+          animatedPos.y,
+          animatedPos.z + fwd.z * bell * arc,
+        ))
+      }
     }
   }
 
@@ -253,6 +262,7 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
         const [targetRx, targetRy, targetRz] = getAnchorRotation(name)
         const [targetFwd, targetRaise]       = getAnchorLeftArm(name)
         const [targetOut, targetUp]          = getAnchorRightArm(name)
+        const arcAxis                        = getAnchorArcAxis(name)
 
         // Main move: tween to target with arc, hold, then advance
         function doMainMove() {
@@ -263,7 +273,7 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
             duration: moveTime,
             x: tx, y: ty, z: tz,
             ease,
-            onUpdate: makePositionUpdate(ref, arc),
+            onUpdate: makePositionUpdate(ref, arc, arcAxis),
             onComplete: () => {
               if (cancelled) return
               // Hold phase — sticky anchor keeps position locked to bone
@@ -370,6 +380,7 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
         const [targetRx, targetRy, targetRz] = getAnchorRotation(name)
         const [targetFwd, targetRaise]       = getAnchorLeftArm(name)
         const [targetOut, targetUp]          = getAnchorRightArm(name)
+        const arcAxis                        = getAnchorArcAxis(name)
 
         const arc  = arcAmount(animatedPos.x, animatedPos.z, tx, tz)
         const ref  = {}
@@ -377,7 +388,7 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
           duration: moveTime,
           x: tx, y: ty, z: tz,
           ease: 'power2.inOut',
-          onUpdate: makePositionUpdate(ref, arc),
+          onUpdate: makePositionUpdate(ref, arc, arcAxis),
           onComplete: () => {
             if (cancelled) return
             isAnimating = false
@@ -438,6 +449,7 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
     const [targetRx, targetRy, targetRz] = getAnchorRotation(anchorName)
     const [targetFwd, targetRaise]       = getAnchorLeftArm(anchorName)
     const [targetOut, targetUp]          = getAnchorRightArm(anchorName)
+    const arcAxis                        = getAnchorArcAxis(anchorName)
 
     isPlaying.value = true
     isAnimating = true
@@ -448,7 +460,7 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
       duration,
       x: pos.x, y: pos.y, z: pos.z,
       ease: 'power2.inOut',
-      onUpdate: makePositionUpdate(ref, arc),
+      onUpdate: makePositionUpdate(ref, arc, arcAxis),
       onComplete: () => {
         isPlaying.value = false
         isAnimating = false

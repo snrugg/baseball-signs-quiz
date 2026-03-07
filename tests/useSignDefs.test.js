@@ -122,14 +122,13 @@ describe('useSignDefs — loadSignDefs', () => {
     expect(signDefs.value).toEqual(DEFAULT_SIGN_DEFS)
   })
 
-  it('accepts array "signs" (typeof array === "object" passes the guard — documents current behavior)', async () => {
-    // Note: `typeof [] === 'object'` is true in JS, so arrays pass the existing guard.
-    // A stricter check would add `&& !Array.isArray(data.signs)`.
+  it('rejects array "signs" and keeps defaults (arrays are not valid sign definitions)', async () => {
+    // `typeof [] === 'object'` is true in JS, but the guard also checks !Array.isArray().
     const arraySigns = ['not', 'an', 'object']
     mockFetch({ indicator: 'chest', signs: arraySigns })
     const { signDefs, loadSignDefs } = useSignDefs()
     await loadSignDefs()
-    expect(signDefs.value).toEqual(arraySigns)
+    expect(signDefs.value).toEqual(DEFAULT_SIGN_DEFS)
   })
 
   it('uses DEFAULT_INDICATOR when remote indicator is not a string', async () => {

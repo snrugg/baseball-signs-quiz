@@ -209,6 +209,141 @@ describe('useIK — computeAutoHandRotation', () => {
   })
 })
 
+describe('useIK — getHandWorldPos (after init)', () => {
+  it('returns a Vector3 when model and handBone are present after init', () => {
+    const { ik } = makeIK()
+    ik.initIK()
+    const result = ik.getHandWorldPos()
+    expect(result).not.toBeNull()
+    expect(result).toBeInstanceOf(THREE.Vector3)
+  })
+
+  it('returns the hand bone world position', () => {
+    const { ik } = makeIK()
+    ik.initIK()
+    const result = ik.getHandWorldPos()
+    // makeFakeBone([0.4, 0.9, 0]) for the hand
+    expect(result.x).toBeCloseTo(0.4)
+    expect(result.y).toBeCloseTo(0.9)
+    expect(result.z).toBeCloseTo(0)
+  })
+})
+
+describe('useIK — solveTwoBoneIK (via frame callback)', () => {
+  it('frame callback does nothing when ikReady is false', () => {
+    const { shoulder, onFrame } = makeIK()
+    const beforeW = shoulder.quaternion.w
+    const frameCallback = onFrame.mock.calls[0][0]
+    frameCallback() // ikReady=false → no-op
+    expect(shoulder.quaternion.w).toBe(beforeW)
+  })
+
+  it('frame callback does nothing when IK is disabled', () => {
+    const { ik, shoulder, onFrame } = makeIK()
+    ik.initIK()
+    ik.setIKEnabled(false)
+    // Reset quaternion to identity so we can detect changes
+    shoulder.quaternion.set(0, 0, 0, 1)
+    const frameCallback = onFrame.mock.calls[0][0]
+    frameCallback()
+    expect(shoulder.quaternion.w).toBeCloseTo(1)
+    expect(shoulder.quaternion.x).toBeCloseTo(0)
+  })
+
+  it('modifies upperArmBone quaternion after solving', () => {
+    const { ik, shoulder, onFrame } = makeIK()
+    ik.initIK()
+    shoulder.quaternion.set(0, 0, 0, 1) // reset to identity
+    ik.setTarget(new THREE.Vector3(0.4, 1.2, 0.3))
+    const frameCallback = onFrame.mock.calls[0][0]
+    frameCallback()
+    // The solver rotates the upper arm — quaternion should no longer be identity
+    const isIdentity = (
+      Math.abs(shoulder.quaternion.w - 1) < 0.001 &&
+      Math.abs(shoulder.quaternion.x) < 0.001 &&
+      Math.abs(shoulder.quaternion.y) < 0.001 &&
+      Math.abs(shoulder.quaternion.z) < 0.001
+    )
+    expect(isIdentity).toBe(false)
+  })
+
+  it('modifies forearmBone quaternion after solving', () => {
+    const { ik, elbow, onFrame } = makeIK()
+    ik.initIK()
+    elbow.quaternion.set(0, 0, 0, 1)
+    ik.setTarget(new THREE.Vector3(0.4, 1.2, 0.3))
+    const frameCallback = onFrame.mock.calls[0][0]
+    frameCallback()
+    const isIdentity = (
+      Math.abs(elbow.quaternion.w - 1) < 0.001 &&
+      Math.abs(elbow.quaternion.x) < 0.001 &&
+      Math.abs(elbow.quaternion.y) < 0.001 &&
+      Math.abs(elbow.quaternion.z) < 0.001
+    )
+    expect(isIdentity).toBe(false)
+  })
+
+  it('produces unit quaternions for both arm bones after solving', () => {
+    const { ik, shoulder, elbow, onFrame } = makeIK()
+    ik.initIK()
+    ik.setTarget(new THREE.Vector3(0.3, 1.2, 0.1))
+    const frameCallback = onFrame.mock.calls[0][0]
+    frameCallback()
+
+    const lenSq = (q) => q.w ** 2 + q.x ** 2 + q.y ** 2 + q.z ** 2
+    expect(Math.sqrt(lenSq(shoulder.quaternion))).toBeCloseTo(1)
+    expect(Math.sqrt(lenSq(elbow.quaternion))).toBeCloseTo(1)
+  })
+
+  it('does not throw when target is beyond max reach', () => {
+    const { ik, onFrame } = makeIK()
+    ik.initIK()
+    ik.setTarget(new THREE.Vector3(10, 10, 10))
+    const frameCallback = onFrame.mock.calls[0][0]
+    expect(() => frameCallback()).not.toThrow()
+  })
+
+  it('does not throw when target is at the shoulder (zero distance)', () => {
+    const { ik, onFrame } = makeIK()
+    ik.initIK()
+    ik.setTarget(new THREE.Vector3(0, 1.4, 0)) // same as shoulder world pos
+    const frameCallback = onFrame.mock.calls[0][0]
+    expect(() => frameCallback()).not.toThrow()
+  })
+
+  it('applies hand rotation override when setHandRotation is non-zero', () => {
+    const { ik, hand, onFrame } = makeIK()
+    ik.initIK()
+    hand.quaternion.set(0, 0, 0, 1)
+    ik.setTarget(new THREE.Vector3(0.4, 1.2, 0.3))
+    ik.setHandRotation(30, 45, -20)
+    const frameCallback = onFrame.mock.calls[0][0]
+    frameCallback()
+    // hand quaternion should be a valid unit quaternion (not identity)
+    const lenSq = hand.quaternion.w ** 2 + hand.quaternion.x ** 2 +
+                  hand.quaternion.y ** 2 + hand.quaternion.z ** 2
+    expect(Math.sqrt(lenSq)).toBeCloseTo(1)
+    const isIdentity = Math.abs(hand.quaternion.w - 1) < 0.001
+    expect(isIdentity).toBe(false)
+  })
+
+  it('skips hand rotation override when setHandRotation is zero', () => {
+    const { ik, hand, onFrame } = makeIK()
+    ik.initIK()
+    hand.quaternion.set(0, 0, 0, 1) // start at identity
+    ik.setTarget(new THREE.Vector3(0.4, 1.2, 0.3))
+    ik.setHandRotation(0, 0, 0)     // zero = no override
+    const frameCallback = onFrame.mock.calls[0][0]
+    frameCallback()
+    // With zero rotation, the hand bone quaternion is NOT touched by the override
+    // It stays as set by the IK solve (identity in this fake setup)
+    expect(hand.quaternion.w).toBeCloseTo(1)
+    expect(hand.quaternion.x).toBeCloseTo(0)
+    expect(hand.quaternion.y).toBeCloseTo(0)
+    expect(hand.quaternion.z).toBeCloseTo(0)
+  })
+})
+
 describe('useIK — auto-init via watcher', () => {
   it('sets ikReady=true after 150ms when all arm bones are present', async () => {
     vi.useFakeTimers()

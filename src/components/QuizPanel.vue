@@ -238,6 +238,27 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <!-- Mobile streak/score overlay — sits in the 3D scene corner so stats are
+       always visible while the quiz panel is below the canvas. -->
+  <Teleport to="#scene-overlay" :disabled="!isMobile">
+    <div v-if="isMobile" class="mobile-streak-overlay">
+      <span
+        class="mobile-streak-chip"
+        :class="{ 'streak-hot': streak >= 3 }"
+        title="Current streak · Best streak"
+      >
+        🔥 {{ streak }} · 🏆 {{ bestStreak }}
+      </span>
+      <button
+        class="mobile-score-chip"
+        @click="resetScore"
+        title="Tap to reset score"
+      >
+        {{ scoreDisplay }}
+      </button>
+    </div>
+  </Teleport>
+
   <Teleport to="#quiz-portal" :disabled="!isMobile">
   <div class="quiz-panel">
 
@@ -880,6 +901,58 @@ onBeforeUnmount(() => {
   transform: scale(0.95);
 }
 
+/* ── Mobile streak/score overlay (inside 3D scene corner) ── */
+.mobile-streak-overlay {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  pointer-events: auto;
+  z-index: 15;
+}
+
+.mobile-streak-chip {
+  font-size: 0.72rem;
+  font-family: monospace;
+  color: #888;
+  padding: 4px 10px;
+  background: rgba(14, 14, 30, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 20px;
+  white-space: nowrap;
+  backdrop-filter: blur(8px);
+  transition: all 0.2s;
+}
+
+.mobile-streak-chip.streak-hot {
+  color: #ffaa44;
+  border-color: rgba(255, 150, 50, 0.4);
+  background: rgba(30, 18, 8, 0.9);
+}
+
+.mobile-score-chip {
+  font-size: 0.72rem;
+  font-family: monospace;
+  color: #777;
+  padding: 4px 10px;
+  background: rgba(14, 14, 30, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  white-space: nowrap;
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.mobile-score-chip:hover {
+  color: #ff7777;
+  border-color: rgba(255, 68, 68, 0.35);
+  background: rgba(40, 10, 10, 0.9);
+}
+
 /* ── Mobile ────────────────────────────────── */
 /* On mobile the quiz panel teleports to #quiz-portal, which sits BELOW
    the canvas in a flex-column layout (see App.vue).  The panel therefore
@@ -918,6 +991,7 @@ onBeforeUnmount(() => {
   .feedback-section { gap: 6px; }
   .start-section { gap: 8px; }
   .gameday-controls { margin-bottom: 8px; }
+  .indicator-note { display: none; }
   .btn-start { padding: 11px; font-size: 0.95rem; }
 }
 </style>

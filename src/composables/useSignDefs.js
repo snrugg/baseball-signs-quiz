@@ -46,7 +46,7 @@ export function useSignDefs() {
       const res = await fetch(url)
       if (!res.ok) return                            // 404 → keep defaults
       const data = await res.json()
-      if (data.signs && typeof data.signs === 'object') {
+      if (data.signs && typeof data.signs === 'object' && !Array.isArray(data.signs)) {
         signDefs.value  = data.signs
         indicator.value = typeof data.indicator === 'string'
           ? data.indicator

@@ -307,6 +307,20 @@ describe('useAnchors — getAnchorWorldPos', () => {
     const { getAnchorWorldPos } = useAnchors(boneMap, null)
     expect(getAnchorWorldPos('billOfCap')).toBeNull() // Head bone missing
   })
+
+  it('returns the correct world position (bone pos + rotated offset) after prefix detection', () => {
+    // Belt anchor: bone='Spine1' at [0, 1.1, 0], offset=[0, -0.10, 0.12]
+    // With identity quaternion the offset is not rotated, so result = [0, 1.0, 0.12]
+    const boneMap = makeBoneMap()
+    const { getAnchorWorldPos, updateAnchors } = useAnchors(boneMap, null)
+    // updateAnchors detects the prefix; without it the bone lookup returns null
+    updateAnchors()
+    const pos = getAnchorWorldPos('belt')
+    expect(pos).not.toBeNull()
+    expect(pos.x).toBeCloseTo(0)
+    expect(pos.y).toBeCloseTo(1.0)   // 1.1 + (-0.10)
+    expect(pos.z).toBeCloseTo(0.12)  // 0 + 0.12
+  })
 })
 
 describe('useAnchors — calibration.json loading', () => {

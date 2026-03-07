@@ -31,7 +31,7 @@ export function useIK(model, skeleton, boneMap, onFrame) {
   let upperArmLen = 0
   let forearmLen = 0
 
-  // Hand rotation target — [rx, ry, rz] in degrees, world-space Euler XYZ.
+  // Hand rotation target — [rx, ry, rz] in degrees, model-local Euler XYZ.
   // When all zero, no override is applied (hand stays at natural IK result).
   const handTargetEuler = { rx: 0, ry: 0, rz: 0 }
 
@@ -68,7 +68,6 @@ export function useIK(model, skeleton, boneMap, onFrame) {
     if (!bones || !skeleton.value) return false
 
     const prefix = detectBonePrefix(bones)
-    console.log('IK using bone prefix:', prefix)
 
     upperArmBone = bones[`${prefix}RightArm`]
     forearmBone  = bones[`${prefix}RightForeArm`]
@@ -93,10 +92,6 @@ export function useIK(model, skeleton, boneMap, onFrame) {
     upperArmLen = shoulderPos.distanceTo(elbowPos)
     forearmLen  = elbowPos.distanceTo(wristPos)
 
-    console.log(`IK arm lengths: upper=${upperArmLen.toFixed(3)}, forearm=${forearmLen.toFixed(3)}`)
-    console.log('Upper arm rest dir (forearm.position):', forearmBone.position.toArray().map(v => v.toFixed(3)))
-    console.log('Forearm rest dir (hand.position):', handBone.position.toArray().map(v => v.toFixed(3)))
-
     // Initialize the IK target to the current hand position
     ikTarget.copy(wristPos)
 
@@ -105,7 +100,6 @@ export function useIK(model, skeleton, boneMap, onFrame) {
     detectPalmAxis()
 
     ikReady.value = true
-    console.log('Two-bone IK solver initialized successfully')
     return true
   }
 
@@ -136,18 +130,13 @@ export function useIK(model, skeleton, boneMap, onFrame) {
     const dotY = Math.abs(axisY.dot(forearmWorldDir))
     const dotZ = Math.abs(axisZ.dot(forearmWorldDir))
 
-    console.log(`Hand axis alignment with forearm: X=${dotX.toFixed(3)} Y=${dotY.toFixed(3)} Z=${dotZ.toFixed(3)}`)
-
     // Palm axis = LOCAL axis LEAST aligned with forearm (most perpendicular = palm)
     if (dotX <= dotY && dotX <= dotZ) {
       _palmLocalAxis.set(1, 0, 0)
-      console.log('Palm axis detected: local +X')
     } else if (dotY <= dotX && dotY <= dotZ) {
       _palmLocalAxis.set(0, 1, 0)
-      console.log('Palm axis detected: local +Y')
     } else {
       _palmLocalAxis.set(0, 0, 1)
-      console.log('Palm axis detected: local +Z')
     }
   }
 

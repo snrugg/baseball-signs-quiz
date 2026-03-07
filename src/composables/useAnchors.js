@@ -67,7 +67,6 @@ const ANCHOR_COLORS = {
   chest:       0x44ff44,
   belt:        0x44ffaa,
   leftArm:     0x44aaff,
-  rightArm:    0x4466ff,
   frontOfLeg:  0xaa44ff,
   backOfLeg:   0xcc44ff,
   frontOfHand: 0xff44aa,

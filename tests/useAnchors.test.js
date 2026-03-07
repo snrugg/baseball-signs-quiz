@@ -123,6 +123,27 @@ describe('useAnchors — getAnchorLeftArm / getAnchorRightArm', () => {
   })
 })
 
+describe('useAnchors — getAnchorArcAxis', () => {
+  beforeEach(() => mockFetch(null, false))
+
+  it('returns "forward" for anchors without an arcAxis', () => {
+    const { getAnchorArcAxis } = useAnchors(makeBoneMap(), null)
+    expect(getAnchorArcAxis('billOfCap')).toBe('forward')
+    expect(getAnchorArcAxis('chest')).toBe('forward')
+    expect(getAnchorArcAxis('frontOfLeg')).toBe('forward')
+  })
+
+  it('returns "down" for backOfLeg', () => {
+    const { getAnchorArcAxis } = useAnchors(makeBoneMap(), null)
+    expect(getAnchorArcAxis('backOfLeg')).toBe('down')
+  })
+
+  it('returns "forward" for an unknown anchor', () => {
+    const { getAnchorArcAxis } = useAnchors(makeBoneMap(), null)
+    expect(getAnchorArcAxis('nonExistent')).toBe('forward')
+  })
+})
+
 describe('useAnchors — setAnchorOffset', () => {
   beforeEach(() => mockFetch(null, false))
 

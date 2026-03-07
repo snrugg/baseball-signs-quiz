@@ -31,7 +31,7 @@ const DEFAULT_ANCHOR_DEFS = {
   leftArm:     { bone: 'LeftArm',      offset: [0, -0.07, 0],      rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
   //rightArm:    { bone: 'RightShoulder', offset: [0, 0, 0.08],      rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
   frontOfLeg:  { bone: 'RightUpLeg',   offset: [0, -0.10, 0.12],   rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
-  backOfLeg:   { bone: 'RightUpLeg',   offset: [0, -0.10, -0.12],  rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
+  backOfLeg:   { bone: 'RightUpLeg',   offset: [0, -0.10, -0.12],  rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcAxis: 'down' },
   frontOfHand: { bone: 'LeftHand',     offset: [0, 0, 0.06],       rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
   backOfHand:  { bone: 'LeftHand',     offset: [0, 0, -0.06],      rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
 }
@@ -193,6 +193,11 @@ export function useAnchors(boneMap, onFrame) {
     def.leftArm[axis] = value
   }
 
+  /** Returns the arc axis for transit TO this anchor ('forward' by default, 'down' for backOfLeg). */
+  function getAnchorArcAxis(name) {
+    return anchorDefs.value[name]?.arcAxis ?? 'forward'
+  }
+
   /** Returns [out, up] elbow bias for the right arm at this anchor. */
   function getAnchorRightArm(name) {
     const def = anchorDefs.value[name]
@@ -331,6 +336,7 @@ export function useAnchors(boneMap, onFrame) {
     setAnchorLeftArm,
     getAnchorRightArm,
     setAnchorRightArm,
+    getAnchorArcAxis,
     createSpheres,
     setSpheresVisible,
     setAnchorOffset,

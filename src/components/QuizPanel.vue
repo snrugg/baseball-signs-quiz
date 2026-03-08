@@ -224,7 +224,10 @@ function onKeyDown(e) {
 // canvas in App.vue's flex layout) so it never overlaps the Three.js canvas.
 // This eliminates both the character-centering problem and touch-event
 // conflicts caused by the canvas's touch-action:none.
-const isMobile = ref(false)
+// Initialise synchronously so the Teleport knows its disabled state from the very
+// first render — avoids a disabled→enabled flip in onMounted that confuses Vue's
+// patchKeyedChildren when it tries to move Teleport slot content with a null anchor.
+const isMobile = ref(window.innerWidth <= 600)
 function checkMobile() { isMobile.value = window.innerWidth <= 600 }
 onMounted(() => {
   checkMobile()
@@ -237,11 +240,11 @@ onBeforeUnmount(() => {
 })
 </script>
 
-<template>
-  <!-- Mobile streak/score overlay — sits in the 3D scene corner so stats are
-       always visible while the quiz panel is below the canvas. -->
-  <Teleport to="#scene-overlay" :disabled="!isMobile">
-    <div v-if="isMobile" class="mobile-streak-overlay">
+<template><Teleport to="#quiz-portal" :disabled="!isMobile" defer><div class="quiz-panel">
+
+    <!-- Mobile streak bar — replaces panel-header (which is hidden on mobile) so
+         score/streak are still visible while the quiz panel occupies the bottom half -->
+    <div v-if="isMobile" class="mobile-streak-bar">
       <span
         class="mobile-streak-chip"
         :class="{ 'streak-hot': streak >= 3 }"
@@ -257,12 +260,8 @@ onBeforeUnmount(() => {
         {{ scoreDisplay }}
       </button>
     </div>
-  </Teleport>
 
-  <Teleport to="#quiz-portal" :disabled="!isMobile">
-  <div class="quiz-panel">
-
-    <!-- Header with score + streak -->
+    <!-- Header with score + streak (desktop only — hidden on mobile) -->
     <div class="panel-header">
       <h2>⚾ Sign Quiz</h2>
       <div class="header-badges">
@@ -408,7 +407,10 @@ onBeforeUnmount(() => {
   </Teleport>
 </template>
 
+
 <style scoped>
+/* (quiz-root wrapper removed — single Teleport is now the component root) */
+
 .quiz-panel {
   position: absolute;
   top: 12px;
@@ -901,17 +903,13 @@ onBeforeUnmount(() => {
   transform: scale(0.95);
 }
 
-/* ── Mobile streak/score overlay (inside 3D scene corner) ── */
-.mobile-streak-overlay {
-  position: absolute;
-  top: 8px;
-  right: 8px;
+/* ── Mobile streak bar (inside quiz panel, replaces hidden panel-header) ── */
+.mobile-streak-bar {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 5px;
-  pointer-events: auto;
-  z-index: 15;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
 }
 
 .mobile-streak-chip {

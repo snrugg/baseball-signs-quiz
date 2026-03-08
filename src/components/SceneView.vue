@@ -176,9 +176,6 @@ provide('signDefs', {
 
     <!-- Slot for UI overlays (calibration, quiz, etc.) -->
     <slot />
-
-    <!-- Portal target for mobile overlays (streak/score chip) -->
-    <div id="scene-overlay" />
   </div>
 </template>
 

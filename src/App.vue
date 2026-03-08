@@ -69,6 +69,7 @@ const mode = ref('gameDay')
         <!-- Calibration mode — only mounted when ?calibrate is in the URL -->
         <CalibrationPanel v-if="mode === 'calibrate' && showCalibration" />
       </SceneView>
+
     </div>
 
     <!-- Mobile portal: panels teleport here on small screens,

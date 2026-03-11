@@ -11,7 +11,7 @@ import * as THREE from 'three'
  *   → moves the right hand to cap, then chest, then belt in sequence,
  *     applying the calibrated hand rotation at each stop.
  */
-export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeftArm, getAnchorRightArm, getAnchorArcAxis, getModelForward, setTarget, setHandRotation, setLeftArmPose, setPoleOffset, onFrame, setIKEnabled, getHandWorldPos) {
+export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeftArm, getAnchorRightArm, getAnchorArcAxis, getAnchorArcScale, getModelForward, setTarget, setHandRotation, setLeftArmPose, setPoleOffset, onFrame, setIKEnabled, getHandWorldPos) {
   const isPlaying = ref(false)
   const currentStep = ref(-1)
   const currentSequence = ref([])
@@ -81,11 +81,11 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
    * and add it along the model's forward direction, so the arc is always zero
    * at the start and end positions and has no effect on the hold phase.
    */
-  function arcAmount(sx, sz, tx, tz) {
+  function arcAmount(sx, sz, tx, tz, scale = 1.0) {
     const dx = tx - sx
     const dz = tz - sz
     const lateralDist = Math.sqrt(dx * dx + dz * dz)
-    return Math.min(0.45, lateralDist * 1.5)
+    return Math.min(0.45, lateralDist * 1.5) * scale
   }
 
   /**
@@ -263,11 +263,12 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
         const [targetFwd, targetRaise]       = getAnchorLeftArm(name)
         const [targetOut, targetUp]          = getAnchorRightArm(name)
         const arcAxis                        = getAnchorArcAxis(name)
+        const arcScale                       = getAnchorArcScale ? getAnchorArcScale(name) : 1.0
 
         // Main move: tween to target with arc, hold, then advance
         function doMainMove() {
           if (cancelled) return
-          const arc  = arcAmount(animatedPos.x, animatedPos.z, tx, tz)
+          const arc  = arcAmount(animatedPos.x, animatedPos.z, tx, tz, arcScale)
           const ref  = {}
           const tween = gsap.to(animatedPos, {
             duration: moveTime,
@@ -381,8 +382,9 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
         const [targetFwd, targetRaise]       = getAnchorLeftArm(name)
         const [targetOut, targetUp]          = getAnchorRightArm(name)
         const arcAxis                        = getAnchorArcAxis(name)
+        const arcScale                       = getAnchorArcScale ? getAnchorArcScale(name) : 1.0
 
-        const arc  = arcAmount(animatedPos.x, animatedPos.z, tx, tz)
+        const arc  = arcAmount(animatedPos.x, animatedPos.z, tx, tz, arcScale)
         const ref  = {}
         const tween = gsap.to(animatedPos, {
           duration: moveTime,
@@ -450,11 +452,12 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
     const [targetFwd, targetRaise]       = getAnchorLeftArm(anchorName)
     const [targetOut, targetUp]          = getAnchorRightArm(anchorName)
     const arcAxis                        = getAnchorArcAxis(anchorName)
+    const arcScale                       = getAnchorArcScale ? getAnchorArcScale(anchorName) : 1.0
 
     isPlaying.value = true
     isAnimating = true
 
-    const arc  = arcAmount(animatedPos.x, animatedPos.z, pos.x, pos.z)
+    const arc  = arcAmount(animatedPos.x, animatedPos.z, pos.x, pos.z, arcScale)
     const ref  = {}
     const tween = gsap.to(animatedPos, {
       duration,

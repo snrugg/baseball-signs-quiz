@@ -119,6 +119,15 @@ function resetRightArm(name) {
   ik.setPoleOffset(0, 0)
 }
 
+function onArcScaleChange(name, event) {
+  const val = parseFloat(event.target.value)
+  if (!isNaN(val)) anchors.setAnchorArcScale(name, val)
+}
+
+function resetArcScale(name) {
+  anchors.setAnchorArcScale(name, 1.0)
+}
+
 let _saveStatusTimer = null
 function save() {
   anchors.saveOffsets()
@@ -337,10 +346,35 @@ function testAllAnchors() {
           {{ (anchors.anchorDefs.value[selectedAnchor]?.rightArm?.[1] ?? 0).toFixed(2) }}
         </span>
       </div>
+
+      <!-- Arc scale -->
+      <div class="section-label rotation-label">
+        Arc
+        <span class="rot-actions">
+          <button class="btn-inline btn-inline-reset" @click="resetArcScale(selectedAnchor)" title="Reset arc scale to default (1×)">✕</button>
+        </span>
+      </div>
+      <div class="offset-row">
+        <label class="rot-label" title="Multiply the forward arc on transitions to this anchor (0 = no arc, 2 = double)">×</label>
+        <input
+          type="range"
+          min="0"
+          max="3"
+          step="0.05"
+          :value="anchors.anchorDefs.value[selectedAnchor]?.arcScale ?? 1.0"
+          @input="onArcScaleChange(selectedAnchor, $event)"
+        />
+        <span class="offset-value">
+          {{ (anchors.anchorDefs.value[selectedAnchor]?.arcScale ?? 1.0).toFixed(2) }}&times;
+        </span>
+      </div>
     </div>
 
     <!-- Actions -->
     <div class="panel-actions">
+      <button class="btn btn-rest" @click="sequencer.moveToRest(0.5 / animSpeed)" :disabled="!ik.ikReady.value">
+        ↩ Return to Rest
+      </button>
       <button class="btn btn-primary" @click="testSequence" :disabled="!ik.ikReady.value || sequencer.isPlaying.value">
         Test: Cap → Chest → Belt
       </button>
@@ -579,6 +613,14 @@ function testAllAnchors() {
   padding: 4px 8px;
   font-size: 0.7rem;
 }
+
+.btn-rest {
+  background: rgba(68, 255, 170, 0.15);
+  color: #44ffaa;
+  border: 1px solid rgba(68, 255, 170, 0.3);
+}
+.btn-rest:hover { background: rgba(68, 255, 170, 0.28); }
+.btn-rest:disabled { color: #555; border-color: rgba(255,255,255,0.08); cursor: default; }
 
 .btn-primary {
   background: #4488ff;

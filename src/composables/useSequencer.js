@@ -233,10 +233,17 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
         stickyAnchor = null
         isAnimating = true
 
-        // Compute arc before the tween mutates animatedPos
+        // Use the last anchor's arc params for the return trip so the arc
+        // avoids the body from the correct direction (e.g. leftEar → rest
+        // uses arcAxis:'up' instead of default 'forward').
+        const lastAnchorName = anchorNames[anchorNames.length - 1]
         const arcOff = computeTransitionArc(
           { x: animatedPos.x, y: animatedPos.y, z: animatedPos.z },
           restPosition,
+          getAnchorArcAxis(lastAnchorName),
+          getAnchorArcScale ? getAnchorArcScale(lastAnchorName) : 1.0,
+          getAnchorArcLift  ? getAnchorArcLift(lastAnchorName)  : 0,
+          getAnchorArcOut   ? getAnchorArcOut(lastAnchorName)   : 0,
         )
         const ref  = {}  // closure ref so onUpdate can call tween.progress()
         const tween = gsap.to(animatedPos, {

@@ -21,6 +21,7 @@ import {
   ARM_FOREARM_RADIUS,
 } from '../src/composables/useIntersectionChecker.js'
 import { DEFAULT_SIGN_DEFS } from '../src/data/signs.js'
+import { DEFAULT_ANCHOR_DEFS } from '../src/composables/useAnchors.js'
 
 // ── Geometry helpers ───────────────────────────────────────────────────────────
 
@@ -378,9 +379,16 @@ describe('sign sequence self-intersection regression', () => {
     backOfHand:  v(-0.44, 0.92,  0.06), // char's left hand, back = +Z
   }
 
-  // Arc axis overrides matching DEFAULT_ANCHOR_DEFS
-  const ARC_AXIS = {
-    backOfLeg: 'down',
+  // Arc parameters pulled directly from DEFAULT_ANCHOR_DEFS so the test
+  // mirrors the exact runtime configuration (arcAxis, arcScale, arcLift, arcOut).
+  function arcParamsFor(toName) {
+    const def = DEFAULT_ANCHOR_DEFS[toName]
+    return {
+      arcAxis:  def?.arcAxis  ?? 'forward',
+      arcScale: def?.arcScale ?? 1.0,
+      arcLift:  def?.arcLift  ?? 0,
+      arcOut:   def?.arcOut   ?? 0,
+    }
   }
 
   // Realistic body capsules for this skeleton (mirrors BODY_SEGMENT_DEFS radii).
@@ -389,9 +397,10 @@ describe('sign sequence self-intersection regression', () => {
   const BODY_CAPS = [
     { name: 'head',         p1: v(0, 1.78, 0),     p2: v(0, 1.65, 0),     radius: 0.11 },
     { name: 'neck',         p1: v(0, 1.65, 0),     p2: v(0, 1.55, 0),     radius: 0.07 },
-    // Torso top at y=1.28 (mid-chest/Spine2), NOT at shoulder level (y=1.42),
-    // to avoid false-positive overlap with the shoulder joint capsule.
-    { name: 'torso',        p1: v(0, 1.28, 0),     p2: v(0, 1.05, 0),     radius: 0.14 },
+    // Torso top at y=1.20 (Spine2/lower-chest), NOT at shoulder level (y=1.42).
+    // Lowered from 1.28 → 1.20 to avoid false-positive overlap between the
+    // shoulder joint capsule and upper-chest region on cross-body transitions.
+    { name: 'torso',        p1: v(0, 1.20, 0),     p2: v(0, 1.05, 0),     radius: 0.14 },
     { name: 'pelvis',       p1: v(0, 1.10, 0),     p2: v(0, 0.95, 0),     radius: 0.13 },
     { name: 'leftUpperArm', p1: v(-0.18, 1.42, 0), p2: v(-0.36, 1.15, 0), radius: 0.05 },
     { name: 'leftForearm',  p1: v(-0.36, 1.15, 0), p2: v(-0.44, 0.92, 0), radius: 0.04 },
@@ -417,21 +426,20 @@ describe('sign sequence self-intersection regression', () => {
     return name === '__rest__' ? REST : (ANCHOR_WORLD[name] ?? REST)
   }
 
-  function arcAxisFor(toName) {
-    return ARC_AXIS[toName] ?? 'forward'
-  }
-
   for (const [signName, anchorNames] of Object.entries(DEFAULT_SIGN_DEFS)) {
     describe(`sign: "${signName}" [${anchorNames.join(', ')}]`, () => {
       for (const [fromName, toName] of signTransitions(anchorNames)) {
         it(`no intersection: ${transitionLabel(fromName, toName)}`, () => {
-          const from    = resolvePos(fromName)
-          const to      = resolvePos(toName)
-          const arcAxis = arcAxisFor(toName)
+          const from = resolvePos(fromName)
+          const to   = resolvePos(toName)
+          // When returning to rest, mirror returnToRest() which uses the last
+          // anchor's (source's) arc params rather than the destination's.
+          const { arcAxis, arcScale, arcLift, arcOut } =
+            toName === '__rest__' ? arcParamsFor(fromName) : arcParamsFor(toName)
 
           const { maxDepth, worstT, worstPair } = sampleTransition(
             from, to, MODEL_FWD, solveParams, BODY_CAPS,
-            { steps: 60, arcAxis }
+            { steps: 60, arcAxis, arcScale, arcLift, arcOut, autoRepulsion: true }
           )
 
           if (maxDepth > MAX_ALLOWED_DEPTH) {

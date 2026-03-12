@@ -14,7 +14,11 @@ import { detectBonePrefix } from './boneUtils.js'
  *
  * These are starting values — the calibration UI lets you adjust them.
  */
-const DEFAULT_ANCHOR_DEFS = {
+/**
+ * Default anchor definitions. Exported so tests can read arc parameters
+ * (arcAxis, arcScale, arcLift, arcOut) to match the runtime configuration.
+ */
+export const DEFAULT_ANCHOR_DEFS = {
   //                                                                              leftArm:  [forward°, raise°]
   //                                                                              rightArm: [out°, up°]  — elbow bias
   //                                                                              forward: swing arm toward front of body
@@ -27,15 +31,15 @@ const DEFAULT_ANCHOR_DEFS = {
   backOfHead:  { bone: 'Head',         offset: [0, 0.10, -0.10],   rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcScale: 1.0, arcLift: 0.15, arcOut: 0.1 },
   nose:        { bone: 'Head',         offset: [0, 0.06, 0.12],    rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcScale: 1.0, arcLift: 0, arcOut: 0 },
   chin:        { bone: 'Head',         offset: [0, -0.02, 0.10],   rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcScale: 1.0, arcLift: 0, arcOut: 0 },
-  leftEar:     { bone: 'Head',         offset: [0.09, 0.03, 0.02],  rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcScale: 1.0, arcLift: 0, arcOut: 0 },
-  rightEar:    { bone: 'Head',         offset: [-0.09, 0.03, 0.02], rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcScale: 1.0, arcLift: 0, arcOut: 0 },
+  leftEar:     { bone: 'Head',         offset: [0.09, 0.03, 0.02],  rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcAxis: 'up', arcScale: 1.0, arcLift: 0.3, arcOut: 0.1 },
+  rightEar:    { bone: 'Head',         offset: [-0.09, 0.03, 0.02], rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcAxis: 'up', arcScale: 1.0, arcLift: 0.3, arcOut: 0.55 },
   chest:       { bone: 'Spine2',       offset: [0, 0.05, 0.12],    rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcScale: 1.0, arcLift: 0, arcOut: 0 },
   belt:        { bone: 'Spine1',       offset: [0, -0.10, 0.12],   rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcScale: 1.0, arcLift: 0, arcOut: 0 },
-  leftArm:     { bone: 'LeftArm',      offset: [0, -0.07, 0],      rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcScale: 1.0, arcLift: 0, arcOut: 0 },
+  leftArm:     { bone: 'LeftArm',      offset: [0, -0.07, 0],      rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcScale: 2.0, arcLift: 0.5, arcOut: 0.2 },
   //rightArm:    { bone: 'RightShoulder', offset: [0, 0, 0.08],      rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcScale: 1.0, arcLift: 0, arcOut: 0 },
   frontOfLeg:  { bone: 'RightUpLeg',   offset: [0, -0.10, 0.12],   rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcScale: 1.0, arcLift: 0, arcOut: 0 },
   backOfLeg:   { bone: 'RightUpLeg',   offset: [0, -0.10, -0.12],  rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcAxis: 'down', arcScale: 1.0, arcLift: 0, arcOut: 0.2 },
-  frontOfHand: { bone: 'LeftHand',     offset: [0, 0, 0.06],       rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcScale: 1.0, arcLift: 0, arcOut: 0 },
+  frontOfHand: { bone: 'LeftHand',     offset: [0, 0, 0.06],       rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcScale: 2.0, arcLift: 0.5, arcOut: 0.3 },
   backOfHand:  { bone: 'LeftHand',     offset: [0, 0, -0.06],      rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcScale: 1.0, arcLift: 0, arcOut: 0.1 },
 }
 

@@ -39,6 +39,12 @@ const {
   getAnchorRightArm,
   setAnchorRightArm,
   getAnchorArcAxis,
+  getAnchorArcScale,
+  setAnchorArcScale,
+  getAnchorArcLift,
+  setAnchorArcLift,
+  getAnchorArcOut,
+  setAnchorArcOut,
   createSpheres,
   setSpheresVisible,
   setAnchorOffset,
@@ -58,6 +64,7 @@ const {
   snapTargetToHand,
   getHandWorldPos,
   computeAutoHandRotation,
+  getBodyCapsules,
 } = useIK(model, skeleton, boneMap, onFrame)
 
 // Returns the model's forward direction (local +Z) in world space.
@@ -73,13 +80,66 @@ const {
   isPlaying,
   currentStep,
   currentSequence,
+  setRepulsionOffset,
   playSign,
   moveToAnchor,
   moveToSequence,
   moveToRest,
   stop,
   initPosition,
-} = useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeftArm, getAnchorRightArm, getAnchorArcAxis, getModelForward, setTarget, setHandRotation, setLeftArmPose, setPoleOffset, onFrame, setIKEnabled, getHandWorldPos)
+} = useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeftArm, getAnchorRightArm, getAnchorArcAxis, getAnchorArcScale, getAnchorArcLift, getAnchorArcOut, getModelForward, setTarget, setHandRotation, setLeftArmPose, setPoleOffset, onFrame, setIKEnabled, getHandWorldPos, getBodyCapsules)
+
+// ── Real-time IK repulsion ─────────────────────────────────────────────────
+// Each frame while a sign is playing, check whether the animated IK target is
+// passing through a body capsule.  If so, push it outward by the penetration
+// depth.  The sequencer adds this offset on top of GSAP's interpolation so it
+// never fights the tween — GSAP still reaches the destination cleanly.
+const WRIST_SPHERE_R = 0.04  // approx forearm/wrist radius
+onFrame(() => {
+  if (!ikReady.value || !isPlaying.value) {
+    setRepulsionOffset(0, 0, 0)
+    return
+  }
+  const target = getTarget()
+  if (!target) return
+
+  const caps = getBodyCapsules()
+  if (!caps.length) return
+
+  let repX = 0, repY = 0, repZ = 0
+
+  for (const cap of caps) {
+    // Vector from capsule endpoint p1 toward p2
+    const d2x = cap.p2.x - cap.p1.x
+    const d2y = cap.p2.y - cap.p1.y
+    const d2z = cap.p2.z - cap.p1.z
+    const len2 = d2x * d2x + d2y * d2y + d2z * d2z
+
+    // Closest point on the capsule segment to the wrist
+    const tSeg = len2 < 1e-10 ? 0 : Math.max(0, Math.min(1,
+      ((target.x - cap.p1.x) * d2x + (target.y - cap.p1.y) * d2y + (target.z - cap.p1.z) * d2z) / len2
+    ))
+    const cx = cap.p1.x + tSeg * d2x
+    const cy = cap.p1.y + tSeg * d2y
+    const cz = cap.p1.z + tSeg * d2z
+
+    // Penetration depth of wrist sphere vs. this body capsule
+    const nx = target.x - cx
+    const ny = target.y - cy
+    const nz = target.z - cz
+    const dist = Math.sqrt(nx * nx + ny * ny + nz * nz)
+    const depth = (WRIST_SPHERE_R + cap.radius) - dist
+
+    if (depth > 0.005 && dist > 0.001) {
+      const scale = depth * 1.3 / dist
+      repX += nx * scale
+      repY += ny * scale
+      repZ += nz * scale
+    }
+  }
+
+  setRepulsionOffset(repX, repY, repZ)
+})
 
 // Initialize sign definitions (async fetch from public/signs.json, falls back to defaults)
 const {
@@ -119,6 +179,12 @@ provide('anchors', {
   setAnchorLeftArm,
   getAnchorRightArm,
   setAnchorRightArm,
+  getAnchorArcScale,
+  setAnchorArcScale,
+  getAnchorArcLift,
+  setAnchorArcLift,
+  getAnchorArcOut,
+  setAnchorArcOut,
   createSpheres,
   setSpheresVisible,
   setAnchorOffset,

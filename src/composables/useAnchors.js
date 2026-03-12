@@ -14,26 +14,33 @@ import { detectBonePrefix } from './boneUtils.js'
  *
  * These are starting values — the calibration UI lets you adjust them.
  */
-const DEFAULT_ANCHOR_DEFS = {
+/**
+ * Default anchor definitions. Exported so tests can read arc parameters
+ * (arcAxis, arcScale, arcLift, arcOut) to match the runtime configuration.
+ */
+export const DEFAULT_ANCHOR_DEFS = {
   //                                                                              leftArm:  [forward°, raise°]
   //                                                                              rightArm: [out°, up°]  — elbow bias
   //                                                                              forward: swing arm toward front of body
   //                                                                              raise:   lift arm up from hanging
-  billOfCap:   { bone: 'Head',         offset: [0, 0.15, 0.13],    rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
-  topOfHead:   { bone: 'HeadTop_End',  offset: [0, 0.02, 0],       rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
-  backOfHead:  { bone: 'Head',         offset: [0, 0.10, -0.10],   rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
-  nose:        { bone: 'Head',         offset: [0, 0.06, 0.12],    rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
-  chin:        { bone: 'Head',         offset: [0, -0.02, 0.10],   rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
-  leftEar:     { bone: 'Head',         offset: [0.09, 0.03, 0.02],  rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
-  rightEar:    { bone: 'Head',         offset: [-0.09, 0.03, 0.02], rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
-  chest:       { bone: 'Spine2',       offset: [0, 0.05, 0.12],    rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
-  belt:        { bone: 'Spine1',       offset: [0, -0.10, 0.12],   rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
-  leftArm:     { bone: 'LeftArm',      offset: [0, -0.07, 0],      rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
-  //rightArm:    { bone: 'RightShoulder', offset: [0, 0, 0.08],      rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
-  frontOfLeg:  { bone: 'RightUpLeg',   offset: [0, -0.10, 0.12],   rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
-  backOfLeg:   { bone: 'RightUpLeg',   offset: [0, -0.10, -0.12],  rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcAxis: 'down' },
-  frontOfHand: { bone: 'LeftHand',     offset: [0, 0, 0.06],       rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
-  backOfHand:  { bone: 'LeftHand',     offset: [0, 0, -0.06],      rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0] },
+  //                                                                              arcScale: multiplier on the auto-computed arc amount (1.0 = default)
+  //                                                                              arcLift:  extra Y bow at midpoint (+ = up, - = down)
+  //                                                                              arcOut:   extra lateral bow at midpoint (+ = away from center/model right)
+  billOfCap:   { bone: 'Head',         offset: [0, 0.15, 0.13],    rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcScale: 1.0, arcLift: 0, arcOut: 0 },
+  topOfHead:   { bone: 'HeadTop_End',  offset: [0, 0.02, 0],       rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcScale: 1.0, arcLift: 0, arcOut: 0 },
+  backOfHead:  { bone: 'Head',         offset: [0, 0.10, -0.10],   rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcScale: 1.0, arcLift: 0.15, arcOut: 0.1 },
+  nose:        { bone: 'Head',         offset: [0, 0.06, 0.12],    rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcScale: 1.0, arcLift: 0, arcOut: 0 },
+  chin:        { bone: 'Head',         offset: [0, -0.02, 0.10],   rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcScale: 1.0, arcLift: 0, arcOut: 0 },
+  leftEar:     { bone: 'Head',         offset: [0.09, 0.03, 0.02],  rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcAxis: 'up', arcScale: 1.0, arcLift: 0.3, arcOut: 0.1 },
+  rightEar:    { bone: 'Head',         offset: [-0.09, 0.03, 0.02], rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcAxis: 'up', arcScale: 1.0, arcLift: 0.3, arcOut: 0.55 },
+  chest:       { bone: 'Spine2',       offset: [0, 0.05, 0.12],    rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcScale: 1.0, arcLift: 0, arcOut: 0 },
+  belt:        { bone: 'Spine1',       offset: [0, -0.10, 0.12],   rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcScale: 1.0, arcLift: 0, arcOut: 0 },
+  leftArm:     { bone: 'LeftArm',      offset: [0, -0.07, 0],      rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcScale: 2.0, arcLift: 0.5, arcOut: 0.2 },
+  //rightArm:    { bone: 'RightShoulder', offset: [0, 0, 0.08],      rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcScale: 1.0, arcLift: 0, arcOut: 0 },
+  frontOfLeg:  { bone: 'RightUpLeg',   offset: [0, -0.10, 0.12],   rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcScale: 1.0, arcLift: 0, arcOut: 0 },
+  backOfLeg:   { bone: 'RightUpLeg',   offset: [0, -0.10, -0.12],  rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcAxis: 'down', arcScale: 1.0, arcLift: 0, arcOut: 0.2 },
+  frontOfHand: { bone: 'LeftHand',     offset: [0, 0, 0.06],       rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcScale: 2.0, arcLift: 0.5, arcOut: 0.3 },
+  backOfHand:  { bone: 'LeftHand',     offset: [0, 0, -0.06],      rotation: [0, 0, 0], leftArm: [0, 0], rightArm: [0, 0], arcScale: 1.0, arcLift: 0, arcOut: 0.1 },
 }
 
 // Human-readable labels for the UI
@@ -86,10 +93,13 @@ function mergeWithDefaults(saved) {
   const merged = structuredClone(DEFAULT_ANCHOR_DEFS)
   for (const [name, def] of Object.entries(saved)) {
     if (merged[name]) {
-      if (Array.isArray(def.offset))   merged[name].offset    = def.offset
-      if (Array.isArray(def.rotation)) merged[name].rotation  = def.rotation
-      if (Array.isArray(def.leftArm))  merged[name].leftArm   = def.leftArm
-      if (Array.isArray(def.rightArm)) merged[name].rightArm  = def.rightArm
+      if (Array.isArray(def.offset))        merged[name].offset    = def.offset
+      if (Array.isArray(def.rotation))      merged[name].rotation  = def.rotation
+      if (Array.isArray(def.leftArm))       merged[name].leftArm   = def.leftArm
+      if (Array.isArray(def.rightArm))      merged[name].rightArm  = def.rightArm
+      if (typeof def.arcScale === 'number') merged[name].arcScale  = def.arcScale
+      if (typeof def.arcLift  === 'number') merged[name].arcLift   = def.arcLift
+      if (typeof def.arcOut   === 'number') merged[name].arcOut    = def.arcOut
     }
   }
   return merged
@@ -198,6 +208,48 @@ export function useAnchors(boneMap, onFrame) {
     return anchorDefs.value[name]?.arcAxis ?? 'forward'
   }
 
+  /**
+   * Returns the arc-amount scale multiplier for transit TO this anchor.
+   * 1.0 = default computed arc; 0 = no arc; 2.0 = double arc.
+   */
+  function getAnchorArcScale(name) {
+    return anchorDefs.value[name]?.arcScale ?? 1.0
+  }
+
+  function setAnchorArcScale(name, value) {
+    const def = anchorDefs.value[name]
+    if (!def) return
+    def.arcScale = value
+  }
+
+  /**
+   * Returns the extra Y-axis arc amount for transit TO this anchor.
+   * Positive = bow upward, negative = bow downward, at the midpoint of the move.
+   */
+  function getAnchorArcLift(name) {
+    return anchorDefs.value[name]?.arcLift ?? 0
+  }
+
+  function setAnchorArcLift(name, value) {
+    const def = anchorDefs.value[name]
+    if (!def) return
+    def.arcLift = value
+  }
+
+  /**
+   * Returns the extra lateral arc amount for transit TO this anchor.
+   * Positive = bow away from body center (model right / +X at default rotation).
+   */
+  function getAnchorArcOut(name) {
+    return anchorDefs.value[name]?.arcOut ?? 0
+  }
+
+  function setAnchorArcOut(name, value) {
+    const def = anchorDefs.value[name]
+    if (!def) return
+    def.arcOut = value
+  }
+
   /** Returns [out, up] elbow bias for the right arm at this anchor. */
   function getAnchorRightArm(name) {
     const def = anchorDefs.value[name]
@@ -291,6 +343,9 @@ export function useAnchors(boneMap, onFrame) {
         rotation: [...(def.rotation  ?? [0, 0, 0])],
         leftArm:  [...(def.leftArm   ?? [0, 0])],
         rightArm: [...(def.rightArm  ?? [0, 0])],
+        arcScale: def.arcScale ?? 1.0,
+        arcLift:  def.arcLift  ?? 0,
+        arcOut:   def.arcOut   ?? 0,
       }
     }
     return out
@@ -337,6 +392,12 @@ export function useAnchors(boneMap, onFrame) {
     getAnchorRightArm,
     setAnchorRightArm,
     getAnchorArcAxis,
+    getAnchorArcScale,
+    setAnchorArcScale,
+    getAnchorArcLift,
+    setAnchorArcLift,
+    getAnchorArcOut,
+    setAnchorArcOut,
     createSpheres,
     setSpheresVisible,
     setAnchorOffset,

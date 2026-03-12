@@ -128,6 +128,24 @@ function resetArcScale(name) {
   anchors.setAnchorArcScale(name, 1.0)
 }
 
+function onArcLiftChange(name, event) {
+  const val = parseFloat(event.target.value)
+  if (!isNaN(val)) anchors.setAnchorArcLift(name, val)
+}
+
+function resetArcLift(name) {
+  anchors.setAnchorArcLift(name, 0)
+}
+
+function onArcOutChange(name, event) {
+  const val = parseFloat(event.target.value)
+  if (!isNaN(val)) anchors.setAnchorArcOut(name, val)
+}
+
+function resetArcOut(name) {
+  anchors.setAnchorArcOut(name, 0)
+}
+
 let _saveStatusTimer = null
 function save() {
   anchors.saveOffsets()
@@ -347,11 +365,11 @@ function testAllAnchors() {
         </span>
       </div>
 
-      <!-- Arc scale -->
+      <!-- Arc controls -->
       <div class="section-label rotation-label">
         Arc
         <span class="rot-actions">
-          <button class="btn-inline btn-inline-reset" @click="resetArcScale(selectedAnchor)" title="Reset arc scale to default (1×)">✕</button>
+          <button class="btn-inline btn-inline-reset" @click="resetArcScale(selectedAnchor); resetArcLift(selectedAnchor); resetArcOut(selectedAnchor)" title="Reset all arc values to defaults">✕</button>
         </span>
       </div>
       <div class="offset-row">
@@ -366,6 +384,34 @@ function testAllAnchors() {
         />
         <span class="offset-value">
           {{ (anchors.anchorDefs.value[selectedAnchor]?.arcScale ?? 1.0).toFixed(2) }}&times;
+        </span>
+      </div>
+      <div class="offset-row">
+        <label class="rot-label" title="Extra vertical bow at midpoint: positive = arc up over body, negative = arc down under hip">↕</label>
+        <input
+          type="range"
+          min="-0.5"
+          max="0.5"
+          step="0.05"
+          :value="anchors.anchorDefs.value[selectedAnchor]?.arcLift ?? 0"
+          @input="onArcLiftChange(selectedAnchor, $event)"
+        />
+        <span class="offset-value">
+          {{ (anchors.anchorDefs.value[selectedAnchor]?.arcLift ?? 0).toFixed(2) }}
+        </span>
+      </div>
+      <div class="offset-row">
+        <label class="rot-label" title="Extra lateral bow at midpoint: positive = swing arm away from body center">↔</label>
+        <input
+          type="range"
+          min="-0.3"
+          max="0.3"
+          step="0.05"
+          :value="anchors.anchorDefs.value[selectedAnchor]?.arcOut ?? 0"
+          @input="onArcOutChange(selectedAnchor, $event)"
+        />
+        <span class="offset-value">
+          {{ (anchors.anchorDefs.value[selectedAnchor]?.arcOut ?? 0).toFixed(2) }}
         </span>
       </div>
     </div>

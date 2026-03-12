@@ -44,6 +44,8 @@ function makeSequencer({ arcAxisOverride } = {}) {
   const getAnchorRightArm = vi.fn(() => [0, 0])
   const getAnchorArcAxis  = vi.fn((name) => arcAxisOverride ?? (name === 'backOfLeg' ? 'down' : 'forward'))
   const getAnchorArcScale = vi.fn(() => 1.0)
+  const getAnchorArcLift  = vi.fn(() => 0)
+  const getAnchorArcOut   = vi.fn(() => 0)
   const getModelForward   = vi.fn(() => ({ x: 0, y: 0, z: 1 }))
   const setTarget         = vi.fn()
   const setHandRotation   = vi.fn()
@@ -57,7 +59,8 @@ function makeSequencer({ arcAxisOverride } = {}) {
 
   const sequencer = useSequencer(
     getAnchorWorldPos, getAnchorRotation, getAnchorLeftArm, getAnchorRightArm,
-    getAnchorArcAxis, getAnchorArcScale, getModelForward, setTarget, setHandRotation,
+    getAnchorArcAxis, getAnchorArcScale, getAnchorArcLift, getAnchorArcOut,
+    getModelForward, setTarget, setHandRotation,
     setLeftArmPose, setPoleOffset, onFrame, setIKEnabled, getHandWorldPos,
   )
 
@@ -67,7 +70,8 @@ function makeSequencer({ arcAxisOverride } = {}) {
     sequencer,
     mocks: {
       getAnchorWorldPos, getAnchorRotation, getAnchorLeftArm, getAnchorRightArm,
-      getAnchorArcAxis, getAnchorArcScale, getModelForward, setTarget, setHandRotation,
+      getAnchorArcAxis, getAnchorArcScale, getAnchorArcLift, getAnchorArcOut,
+      getModelForward, setTarget, setHandRotation,
       setLeftArmPose, setPoleOffset, setIKEnabled, getHandWorldPos, onFrame,
     },
     runFrame,

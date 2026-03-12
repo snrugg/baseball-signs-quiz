@@ -5,11 +5,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Quick Start Commands
 
 ```bash
-npm run dev    # Open local development server
-npm run build  # Build production-ready version
-npm run test   # Run all unit tests
-npm run test:watch  # Run tests in watch mode (requires terminal open)
-npm run test:coverage  # Run tests with coverage reports
+npm run dev           # Open local development server
+npm run build         # Build production-ready version
+npm run test          # Run all unit tests (vitest run)
+npm run test:watch    # Run tests in watch mode
+npm run test:coverage # Run tests with coverage reports
+
+# Run a single test file:
+npx vitest run tests/useIntersectionChecker.test.js
 ```
 
 ## Application Architecture
@@ -32,15 +35,29 @@ src/components/
 └── ReviewPanel.vue    # Review mode component
 
 src/composables/
-├── useScene.js        # Three.js model & camera orchestration
-├── useAnchors.js      # Anchor positioning & calibration system
-├── useIK.js           # Input-based skeletal animation (hand-to-plectrum)
-├── useSequencer.js    # Game sequencer (moves between anchor positions)
-└── useSignDefs.js     # Sign definition loading from external file
+├── useScene.js              # Three.js model & camera orchestration
+├── useAnchors.js            # Anchor positioning & calibration system
+├── useIK.js                 # Input-based skeletal animation (hand-to-plectrum)
+├── useSequencer.js          # Game sequencer (moves between anchor positions)
+├── useSignDefs.js           # Sign definition loading from signs.json with fallback
+├── useIntersectionChecker.js # Capsule-skeleton self-intersection detector (no WebGL)
+├── boneUtils.js             # Mixamo bone prefix detection (detectBonePrefix)
+└── sceneUtils.js            # Scene utility helpers
 
 src/
-├── data/              # Constants, defaults, API calls
+├── data/signs.js      # DEFAULT_SIGN_DEFS and DEFAULT_INDICATOR (hardcoded fallback)
 └── main.js            # App entry point with Vue setup
+
+tests/                 # Vitest unit tests (jsdom, no WebGL required)
+├── boneUtils.test.js
+├── signs.test.js
+├── sceneUtils.test.js
+├── useAnchors.test.js
+├── useIK.test.js
+├── useIntersectionChecker.test.js
+├── useSequencer.test.js
+├── useSignDefs.test.js
+└── QuizPanel.test.js
 ```
 
 **Key Component Flow:**
@@ -64,6 +81,14 @@ src/
 - Provides hand rotation control via `setHandRotation()` and `computeAutoHandRotation()`
 - Required for gameplay mechanics
 
+#### `useIntersectionChecker.js` (Collision Detection)
+- Approximates character body as capsules (line segment + radius) for CPU-only collision detection
+- `checkFrame(shoulder, elbow, wrist, bodyCaps)` → `{ intersecting, pairs, maxDepth }`
+- `buildBodyCapsules(boneMap, prefix)` → capsule array from live bone positions
+- `sampleTransition(from, to, modelFwd, solveParams, bodyCaps)` → worst intersection along an arc path
+- Body capsule radii defined in `BODY_SEGMENT_DEFS`; tune radii if false positives appear
+- Works in Vitest/jsdom without a WebGL context
+
 #### `useSequencer.js` (Game Flow)
 - Manages game state: playing step, sequence ID, position targets
 - Routes player between three states:
@@ -72,10 +97,15 @@ src/
   - `moveToRest` - return to starting position
 - Provides `playSign()`, `stop()` for game actions
 
+### Sign Data
+
+- **Runtime:** `useSignDefs.js` fetches `public/signs.json` at startup (coaches can edit freely)
+- **Fallback:** If `signs.json` is missing or unparseable, `src/data/signs.js` exports `DEFAULT_SIGN_DEFS` and `DEFAULT_INDICATOR`
+- Sign format: `{ "Hit & Run": ["leftArm"] }` — meaning string → array of anchor names
+- `DEFAULT_INDICATOR` (`billOfCap`) is the anchor that activates the next sign in Game Day mode
+
 ### External Dependencies
 
-The app loads external assets from:
-- **signs.json** - Sign definitions from `http://public/signs.json` (fetched in useSignDefs.js)
 - Three.js 0.183.x (for 3D rendering)
 - GSAP 3.14.x (for animations)
 
@@ -98,22 +128,18 @@ On small screens (<600px width):
 
 ## Development Workflow
 
-### Single Test
-```bash
-npm run test   # Runs full test suite - see output in terminal
-```
+### Running Tests
 
-### Common Commands
-- `npm run dev` - Run development server (vite)
-- `npm run build` - Compile for production
-- `npm run test:watch` - Interactive testing mode
+Tests live in `tests/` and use Vitest + jsdom. Three.js math works in jsdom, so no WebGL context is needed — all composable unit tests run headlessly.
+
+```bash
+npm run test                                          # Full suite
+npx vitest run tests/useIntersectionChecker.test.js  # Single file
+npx vitest run -t "segSegDistSq"                     # Single test by name
+```
 
 ## Important Notes
 
-1. The application uses **compositionals** (useScene.js, useAnchors.js, etc.) that are imported at setup time into components using `provide()` and `inject()`.
+1. Composables are instantiated with arguments and injected into components via Vue's `provide()` / `inject()` pattern. Each composable returns an object of functions/state (e.g., `useIntersectionChecker()` returns `{ checkFrame, buildBodyCapsules, sampleTransition, ... }`).
 
-2. Sign definitions come from an external API (`signs.json`) - check internet access for game data.
-
-3. The main entry point is `src/main.js` which wraps the entire component structure.
-
-4. All composable functions are meant to be called directly with their arguments (e.g., `useAnchors(boneMap, onFrame)`), not via composables' return values.
+2. Bone names use a Mixamo prefix (`mixamorig`, `mixamorig:`, or `mixamorig9`). Use `detectBonePrefix(boneMap)` from `boneUtils.js` to resolve the correct prefix before accessing bones.

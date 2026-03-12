@@ -57,11 +57,13 @@ function makeSequencer({ arcAxisOverride } = {}) {
   const frameCallbacks = []
   const onFrame = vi.fn((cb) => frameCallbacks.push(cb))
 
+  const getBodyCapsules = vi.fn(() => [])
+
   const sequencer = useSequencer(
     getAnchorWorldPos, getAnchorRotation, getAnchorLeftArm, getAnchorRightArm,
     getAnchorArcAxis, getAnchorArcScale, getAnchorArcLift, getAnchorArcOut,
     getModelForward, setTarget, setHandRotation,
-    setLeftArmPose, setPoleOffset, onFrame, setIKEnabled, getHandWorldPos,
+    setLeftArmPose, setPoleOffset, onFrame, setIKEnabled, getHandWorldPos, getBodyCapsules,
   )
 
   const runFrame = () => frameCallbacks.forEach(cb => cb())
@@ -377,11 +379,12 @@ describe('useSequencer — downward arc', () => {
     expect(mocks.getAnchorArcAxis).toHaveBeenCalledWith('backOfLeg')
   })
 
-  it('does NOT call getModelForward when arcAxis is down', () => {
-    // Use moveToAnchor (no return-to-rest) so only the down-arc path runs
+  it('calls getModelForward for body-repulsion even when arcAxis is down', () => {
+    // computeTransitionArc always needs the model forward direction to determine
+    // the model-right axis for the automatic body-centre repulsion pass.
     const { sequencer, mocks } = makeSequencer({ arcAxisOverride: 'down' })
     sequencer.moveToAnchor('backOfLeg')
-    expect(mocks.getModelForward).not.toHaveBeenCalled()
+    expect(mocks.getModelForward).toHaveBeenCalled()
   })
 
   it('getModelForward IS called for forward-arc anchors', async () => {

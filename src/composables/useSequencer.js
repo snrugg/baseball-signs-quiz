@@ -11,7 +11,7 @@ import * as THREE from 'three'
  *   → moves the right hand to cap, then chest, then belt in sequence,
  *     applying the calibrated hand rotation at each stop.
  */
-export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeftArm, getAnchorRightArm, getAnchorArcAxis, getAnchorArcScale, getAnchorArcLift, getAnchorArcOut, getModelForward, setTarget, setHandRotation, setLeftArmPose, setPoleOffset, onFrame, setIKEnabled, getHandWorldPos) {
+export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeftArm, getAnchorRightArm, getAnchorArcAxis, getAnchorArcScale, getAnchorArcLift, getAnchorArcOut, getModelForward, setTarget, setHandRotation, setLeftArmPose, setPoleOffset, onFrame, setIKEnabled, getHandWorldPos, getBodyCapsules) {
   const isPlaying = ref(false)
   const currentStep = ref(-1)
   const currentSequence = ref([])
@@ -66,74 +66,92 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
     if (setIKEnabled) setIKEnabled(false)
   }
 
-  // ── Arc helper ─────────────────────────────────────────────────────────────
+  // ── Arc helpers ────────────────────────────────────────────────────────────
+
   /**
-   * Compute how far to arc the hand FORWARD (in the model's facing direction)
-   * during a transition to avoid passing through the body.
+   * Compute the arc offset vector at the midpoint (t=0.5, bell=1) for a transition.
    *
-   * The arc is proportional to the horizontal (XZ-plane) distance between the
-   * two endpoints.  Purely vertical transitions (same XZ position) get no arc;
-   * wide lateral swings like left-ear → right-ear get up to ~0.45 units of
-   * forward bow at the midpoint.
+   * Combines three layers:
+   *   1. Primary arc  — forward/down/up bow proportional to lateral distance
+   *   2. Manual       — per-anchor arcLift (Y) and arcOut (lateral) adjustments
+   *   3. Auto-repulsion — if the midpoint (after layers 1+2) is still within the
+   *      body's approximate silhouette, push it outward automatically.
    *
-   * In the position tween's onUpdate we multiply this by the bell-curve value
-   *   bell(t) = 4t(1-t)   (0 at t=0 and t=1, peak of 1 at t=0.5)
-   * and add it along the model's forward direction, so the arc is always zero
-   * at the start and end positions and has no effect on the hold phase.
+   * Returns { ox, oy, oz }.  Callers multiply by bell(t) = 4t(1-t) each frame.
    */
-  function arcAmount(sx, sz, tx, tz, scale = 1.0) {
-    const dx = tx - sx
-    const dz = tz - sz
-    const lateralDist = Math.sqrt(dx * dx + dz * dz)
-    return Math.min(0.45, lateralDist * 1.5) * scale
+  function computeTransitionArc(startPos, endPos, arcAxis = 'forward', arcScale = 1.0, arcLift = 0, arcOut = 0) {
+    const fwd = getModelForward()
+    const rx  = -fwd.z   // model right = (-fwd.z, 0, fwd.x) — +X at default rotation
+    const rz  =  fwd.x
+
+    const lateralDist = Math.sqrt(
+      (endPos.x - startPos.x) ** 2 + (endPos.z - startPos.z) ** 2
+    )
+    const primaryArc = Math.min(0.45, lateralDist * 1.5) * arcScale
+
+    let ox = 0, oy = 0, oz = 0
+
+    // 1. Primary arc
+    if (arcAxis === 'down')      { oy -= primaryArc }
+    else if (arcAxis === 'up')   { oy += primaryArc }
+    else /* 'forward' */         { ox += fwd.x * primaryArc; oz += fwd.z * primaryArc }
+
+    // 2. Manual per-anchor adjustments
+    oy += arcLift
+    ox += rx * arcOut
+    oz += rz * arcOut
+
+    // 3. Auto body-centre repulsion.
+    // Compute where the midpoint lands after layers 1+2, and check if it falls
+    // inside the body's approximate silhouette.  If so, push outward until clear.
+    const mx = (startPos.x + endPos.x) / 2 + ox
+    const my = (startPos.y + endPos.y) / 2 + oy
+    const mz = (startPos.z + endPos.z) / 2 + oz
+    // Body radius varies by height (conservative, includes some arm clearance)
+    const bodyR    = my > 1.1 ? 0.20 : my > 0.65 ? 0.17 : 0.13
+    const clearance = bodyR + 0.04  // extra margin
+    const mhDist   = Math.sqrt(mx * mx + mz * mz)
+    const shortage  = clearance - mhDist
+    if (shortage > 0.005) {
+      const repScale = shortage * 1.6
+      if (mhDist > 0.01) {
+        ox += (mx / mhDist) * repScale
+        oz += (mz / mhDist) * repScale
+      } else {
+        // Midpoint sits on the body centerline — push in model-right direction
+        ox += rx * repScale
+        oz += rz * repScale
+      }
+    }
+
+    return { ox, oy, oz }
+  }
+
+  // Real-time repulsion offset — written each frame by SceneView after IK resolves.
+  // Applied additively in makePositionUpdate so it never fights GSAP's interpolation.
+  const _repulsionOffset = { x: 0, y: 0, z: 0 }
+
+  function setRepulsionOffset(x, y, z) {
+    _repulsionOffset.x = x
+    _repulsionOffset.y = y
+    _repulsionOffset.z = z
   }
 
   /**
-   * Build the onUpdate callback for a position tween that includes the arc offset.
+   * Build the onUpdate callback for a position tween.
    *
-   * @param {object} posTweenRef - object with a `.tween` property set after creation
-   *   (closure trick to reference the tween from inside its own callback)
-   * @param {number} arc - primary arc amount from arcAmount()
-   * @param {string} arcAxis - 'forward' | 'down' | 'up'
-   * @param {number} arcLift - extra Y bow (+ = up, - = down)
-   * @param {number} arcOut  - extra lateral bow (+ = model right / away from center)
+   * @param {object} posTweenRef - closure ref so progress() can be read
+   * @param {{ ox, oy, oz }} arcOff - midpoint arc offset from computeTransitionArc
    */
-  function makePositionUpdate(posTweenRef, arc, arcAxis = 'forward', arcLift = 0, arcOut = 0) {
+  function makePositionUpdate(posTweenRef, arcOff) {
     return () => {
-      const t = posTweenRef.tween ? posTweenRef.tween.progress() : 0
-      const bell = 4 * t * (1 - t)           // 0→1→0 over the tween duration
-
-      let ox = 0, oy = 0, oz = 0
-
-      // Primary arc along the specified axis
-      if (arcAxis === 'down') {
-        oy -= bell * arc
-      } else if (arcAxis === 'up') {
-        oy += bell * arc
-      } else {
-        // 'forward' — bow in the model's facing direction
-        const fwd = getModelForward()
-        ox += fwd.x * bell * arc
-        oz += fwd.z * bell * arc
-      }
-
-      // Additional independent lift component (positive = up, negative = down)
-      if (arcLift !== 0) {
-        oy += bell * arcLift
-      }
-
-      // Additional lateral component (positive = away from center / model right)
-      // Model right = forward × worldUp = (-fwd.z, 0, fwd.x)
-      if (arcOut !== 0) {
-        const fwd = getModelForward()
-        ox += (-fwd.z) * bell * arcOut
-        oz += fwd.x * bell * arcOut
-      }
+      const t    = posTweenRef.tween ? posTweenRef.tween.progress() : 0
+      const bell = 4 * t * (1 - t)
 
       setTarget(new THREE.Vector3(
-        animatedPos.x + ox,
-        animatedPos.y + oy,
-        animatedPos.z + oz,
+        animatedPos.x + bell * arcOff.ox + _repulsionOffset.x,
+        animatedPos.y + bell * arcOff.oy + _repulsionOffset.y,
+        animatedPos.z + bell * arcOff.oz + _repulsionOffset.z,
       ))
     }
   }
@@ -215,8 +233,11 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
         stickyAnchor = null
         isAnimating = true
 
-        // Capture start and compute arc before the tween mutates animatedPos
-        const arc = arcAmount(animatedPos.x, animatedPos.z, restPosition.x, restPosition.z)
+        // Compute arc before the tween mutates animatedPos
+        const arcOff = computeTransitionArc(
+          { x: animatedPos.x, y: animatedPos.y, z: animatedPos.z },
+          restPosition,
+        )
         const ref  = {}  // closure ref so onUpdate can call tween.progress()
         const tween = gsap.to(animatedPos, {
           duration: moveTime,
@@ -224,7 +245,7 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
           y: restPosition.y,
           z: restPosition.z,
           ease,
-          onUpdate: makePositionUpdate(ref, arc),
+          onUpdate: makePositionUpdate(ref, arcOff),
           onComplete: finish,
         })
         ref.tween  = tween
@@ -291,13 +312,17 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
         // Main move: tween to target with arc, hold, then advance
         function doMainMove() {
           if (cancelled) return
-          const arc  = arcAmount(animatedPos.x, animatedPos.z, tx, tz, arcScale)
+          const arcOff = computeTransitionArc(
+            { x: animatedPos.x, y: animatedPos.y, z: animatedPos.z },
+            { x: tx, y: ty, z: tz },
+            arcAxis, arcScale, arcLift, arcOut,
+          )
           const ref  = {}
           const tween = gsap.to(animatedPos, {
             duration: moveTime,
             x: tx, y: ty, z: tz,
             ease,
-            onUpdate: makePositionUpdate(ref, arc, arcAxis, arcLift, arcOut),
+            onUpdate: makePositionUpdate(ref, arcOff),
             onComplete: () => {
               if (cancelled) return
               // Hold phase — sticky anchor keeps position locked to bone
@@ -409,13 +434,17 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
         const arcLift                        = getAnchorArcLift  ? getAnchorArcLift(name)  : 0
         const arcOut                         = getAnchorArcOut   ? getAnchorArcOut(name)   : 0
 
-        const arc  = arcAmount(animatedPos.x, animatedPos.z, tx, tz, arcScale)
+        const arcOff = computeTransitionArc(
+          { x: animatedPos.x, y: animatedPos.y, z: animatedPos.z },
+          { x: tx, y: ty, z: tz },
+          arcAxis, arcScale, arcLift, arcOut,
+        )
         const ref  = {}
         const tween = gsap.to(animatedPos, {
           duration: moveTime,
           x: tx, y: ty, z: tz,
           ease: 'power2.inOut',
-          onUpdate: makePositionUpdate(ref, arc, arcAxis, arcLift, arcOut),
+          onUpdate: makePositionUpdate(ref, arcOff),
           onComplete: () => {
             if (cancelled) return
             isAnimating = false
@@ -484,13 +513,17 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
     isPlaying.value = true
     isAnimating = true
 
-    const arc  = arcAmount(animatedPos.x, animatedPos.z, pos.x, pos.z, arcScale)
+    const arcOff = computeTransitionArc(
+      { x: animatedPos.x, y: animatedPos.y, z: animatedPos.z },
+      { x: pos.x, y: pos.y, z: pos.z },
+      arcAxis, arcScale, arcLift, arcOut,
+    )
     const ref  = {}
     const tween = gsap.to(animatedPos, {
       duration,
       x: pos.x, y: pos.y, z: pos.z,
       ease: 'power2.inOut',
-      onUpdate: makePositionUpdate(ref, arc, arcAxis, arcLift, arcOut),
+      onUpdate: makePositionUpdate(ref, arcOff),
       onComplete: () => {
         isPlaying.value = false
         isAnimating = false
@@ -539,13 +572,16 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
     activateIK()
     isAnimating = true
 
-    const arc  = arcAmount(animatedPos.x, animatedPos.z, restPosition.x, restPosition.z)
+    const arcOff = computeTransitionArc(
+      { x: animatedPos.x, y: animatedPos.y, z: animatedPos.z },
+      restPosition,
+    )
     const ref  = {}
     const tween = gsap.to(animatedPos, {
       duration,
       x: restPosition.x, y: restPosition.y, z: restPosition.z,
       ease: 'power2.inOut',
-      onUpdate: makePositionUpdate(ref, arc),
+      onUpdate: makePositionUpdate(ref, arcOff),
       onComplete: () => {
         isAnimating = false
         deactivateIK()   // idle animation reclaims the arm
@@ -605,6 +641,7 @@ export function useSequencer(getAnchorWorldPos, getAnchorRotation, getAnchorLeft
     isPlaying,
     currentStep,
     currentSequence,
+    setRepulsionOffset,
     playSign,
     moveToAnchor,
     moveToSequence,

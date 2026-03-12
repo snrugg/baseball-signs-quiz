@@ -94,6 +94,18 @@ export function capsulePenetration(a1, a2, rA, b1, b2, rB) {
   return (rA + rB) - dist
 }
 
+/**
+ * Returns the closest point on segment [p→q] to point a.
+ * Used for computing repulsion normals in the real-time IK repulsion pass.
+ */
+export function closestPointOnSegment(a, p, q) {
+  const pq = new THREE.Vector3().subVectors(q, p)
+  const len2 = pq.dot(pq)
+  if (len2 < 1e-10) return p.clone()
+  const t = Math.max(0, Math.min(1, new THREE.Vector3().subVectors(a, p).dot(pq) / len2))
+  return new THREE.Vector3().copy(p).addScaledVector(pq, t)
+}
+
 // ── Body capsule definitions ──────────────────────────────────────────────────
 
 /**
@@ -192,18 +204,61 @@ export function useIntersectionChecker() {
    */
   function sampleTransition(from, to, modelFwd, solveParams, bodyCaps, opts = {}) {
     const {
-      steps           = 30,
-      arcAxis         = 'forward',
-      arcAmt          = null,   // if null, auto-computed from lateral distance
-      excludeEndpoints = true,  // skip t=0 and t=1 (those are calibrated anchor positions)
+      steps            = 30,
+      arcAxis          = 'forward',
+      arcScale         = 1.0,
+      arcAmt           = null,   // if null, auto-computed from lateral distance
+      arcLift          = 0,      // extra Y bow (+ = up, - = down)
+      arcOut           = 0,      // extra lateral bow (+ = away from body center)
+      autoRepulsion    = true,   // automatically push midpoint out of body silhouette
+      excludeEndpoints = true,   // skip first/last 10% to avoid calibrated-anchor FP
     } = opts
 
     const { shoulder, upperArmLen, forearmLen } = solveParams
 
-    // Replicate arcAmount() from useSequencer
-    const dx   = to.x - from.x
-    const dz   = to.z - from.z
-    const arc  = arcAmt ?? Math.min(0.45, Math.sqrt(dx * dx + dz * dz) * 1.5)
+    // Mirror computeTransitionArc() from useSequencer: compute the full arc
+    // offset vector (ox, oy, oz) at the midpoint (bell=1, t=0.5).
+    const dx  = to.x - from.x
+    const dz  = to.z - from.z
+    const lateralDist = Math.sqrt(dx * dx + dz * dz)
+    const primaryArc  = arcAmt ?? (Math.min(0.45, lateralDist * 1.5) * arcScale)
+
+    const fwd = modelFwd
+    const rx  = -fwd.z   // model right = (-fwd.z, 0, fwd.x)
+    const rz  = fwd.x
+
+    let ox = 0, oy = 0, oz = 0
+
+    // 1. Primary arc
+    if (arcAxis === 'down')      { oy -= primaryArc }
+    else if (arcAxis === 'up')   { oy += primaryArc }
+    else /* 'forward' */         { ox += fwd.x * primaryArc; oz += fwd.z * primaryArc }
+
+    // 2. Manual adjustments
+    oy += arcLift
+    ox += rx * arcOut
+    oz += rz * arcOut
+
+    // 3. Automatic body-centre repulsion (same heuristic as useSequencer)
+    if (autoRepulsion) {
+      const mx = (from.x + to.x) / 2 + ox
+      const my = (from.y + to.y) / 2 + oy
+      const mz = (from.z + to.z) / 2 + oz
+      const bodyR = my > 1.1 ? 0.20 : my > 0.65 ? 0.17 : 0.13
+      const clearance = bodyR + 0.04
+      const mhDist = Math.sqrt(mx * mx + mz * mz)
+      const shortage = clearance - mhDist
+      if (shortage > 0.005) {
+        const repScale = shortage * 1.6
+        if (mhDist > 0.01) {
+          ox += (mx / mhDist) * repScale
+          oz += (mz / mhDist) * repScale
+        } else {
+          ox += rx * repScale
+          oz += rz * repScale
+        }
+      }
+    }
 
     let maxDepth = -Infinity
     let worstT   = 0
@@ -219,16 +274,11 @@ export function useIntersectionChecker() {
       const t    = i / steps
       const bell = 4 * t * (1 - t)
 
-      // Interpolate base position
+      // Interpolate base position and apply arc offset
       const wrist = new THREE.Vector3().lerpVectors(from, to, t)
-
-      // Apply arc (mirrors makePositionUpdate in useSequencer)
-      if (arcAxis === 'down') {
-        wrist.y -= bell * arc
-      } else {
-        wrist.x += modelFwd.x * bell * arc
-        wrist.z += modelFwd.z * bell * arc
-      }
+      wrist.x += bell * ox
+      wrist.y += bell * oy
+      wrist.z += bell * oz
 
       // Approximate elbow with the adaptive two-bone solve
       const { elbow } = approximateElbow(shoulder, wrist, upperArmLen, forearmLen, modelFwd)
@@ -309,6 +359,7 @@ export function useIntersectionChecker() {
     buildBodyCapsules,
     sampleTransition,
     approximateElbow,
+    closestPointOnSegment,
     // Exported for unit testing
     _segSegDistSq: segSegDistSq,
     _capsulePenetration: capsulePenetration,

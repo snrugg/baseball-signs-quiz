@@ -1,6 +1,7 @@
 import { ref, watch } from 'vue'
 import * as THREE from 'three'
 import { detectBonePrefix } from './boneUtils.js'
+import { useIntersectionChecker } from './useIntersectionChecker.js'
 
 /**
  * Two-bone IK solver for the right arm with a pole vector
@@ -408,6 +409,21 @@ export function useIK(model, skeleton, boneMap, onFrame) {
     { immediate: true }
   )
 
+  // ── Body capsule helper ────────────────────────────────────────────────────
+  const { buildBodyCapsules } = useIntersectionChecker()
+
+  /**
+   * Build and return the current body capsules in world space.
+   * Uses the same boneMap and prefix as the IK solver.
+   * Returns [] if the model is not yet loaded.
+   */
+  function getBodyCapsules() {
+    const bones = boneMap.value
+    if (!bones || !ikReady.value) return []
+    const prefix = detectBonePrefix(bones)
+    return buildBodyCapsules(bones, prefix)
+  }
+
   return {
     ikReady,
     setTarget,
@@ -419,5 +435,6 @@ export function useIK(model, skeleton, boneMap, onFrame) {
     snapTargetToHand,
     getHandWorldPos,
     computeAutoHandRotation,
+    getBodyCapsules,
   }
 }

@@ -331,12 +331,12 @@ onBeforeUnmount(() => {
     <!-- Idle: hint + start button -->
     <div v-if="quizState === 'idle'" class="start-section">
       <p v-if="props.quizMode === 'justSign'" class="hint">
-        Watch the sign, then identify the call.
+        Press Play, then identify the call after seeing the sign.
       </p>
       <p v-else class="hint">
-        Watch for the
-        <strong>{{ anchors.ANCHOR_LABELS[signDefs.indicator.value] }}</strong>
-        sign, then identify the call that follows it.
+        Press Play, then identify the call after seeing the
+        <strong>indicator</strong>
+        sign.
       </p>
       <button class="btn-start" @click="startQuiz" :disabled="!ik.ikReady.value">
         {{ ik.ikReady.value ? '▶  Play' : 'Loading...' }}

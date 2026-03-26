@@ -17,7 +17,7 @@ npx vitest run tests/useIntersectionChecker.test.js
 
 ## Application Architecture
 
-This is a **musical game/sequencer** application built with Vue.js and Three.js for 3D rendering.
+This is a **baseball practice** application built with Vue.js and Three.js to assist players in memorizing and practicing baseball signs..
 
 ### High-Level Architecture
 
